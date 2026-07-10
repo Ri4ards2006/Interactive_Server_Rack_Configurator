@@ -12,11 +12,18 @@
  *   the blueprint's `useFrame` works but wastes CPU.
  * - Rail positions are fixed offsets from the rack center so the screws
  *   always sit flush against the inside of each corner post.
+ *
+ * Visual signature
+ * ----------------
+ * 3D mode (default): PBR metallic dark screws (silver-black).
+ * Blueprint mode: flat near-black fill — screws drop into the schematic
+ * alongside the rack frame + chassis outlines.
  */
 
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useConfiguratorStore, RACK_UNIT_HEIGHT } from '../../../store/useConfiguratorStore';
+import { useIsBlueprint } from '../Hardware/shared';
 
 // Rail offsets — distance from rack center to each rail's screw column.
 const RAIL_X = 0.27;
@@ -27,6 +34,19 @@ const SCREW_RADIUS = 0.0035;
 const SCREW_HEIGHT = 0.008;
 const SCREW_SEGMENTS = 8;
 
+// Module-scoped PBR + blueprint materials. Allocated once at import
+// time so the conditional swap on `viewMode` flip is a reference
+// assignment — no allocations.
+const screwMaterial = new THREE.MeshStandardMaterial({
+  color: '#0a0a0a',
+  metalness: 0.95,
+  roughness: 0.25,
+});
+
+const blueprintScrewMaterial = new THREE.MeshBasicMaterial({
+  color: '#27272a', // slightly lighter than the chassis fill so screws read as distinct dots
+});
+
 interface RackScrewsProps {
   /** Optional override; defaults to `capacity * 2`. */
   count?: number;
@@ -35,6 +55,7 @@ interface RackScrewsProps {
 export function RackScrews({ count }: RackScrewsProps) {
   const ref = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
+  const isBlueprint = useIsBlueprint();
 
   // `capacity` is a primitive so a plain `===` selector is optimal.
   const capacity = useConfiguratorStore((s) => s.capacity);
@@ -79,13 +100,13 @@ export function RackScrews({ count }: RackScrewsProps) {
     <instancedMesh
       ref={ref}
       args={[undefined, undefined, totalScrews]}
-      castShadow
-      receiveShadow
+      castShadow={!isBlueprint}
+      receiveShadow={!isBlueprint}
+      material={isBlueprint ? blueprintScrewMaterial : screwMaterial}
     >
       <cylinderGeometry
         args={[SCREW_RADIUS, SCREW_RADIUS, SCREW_HEIGHT, SCREW_SEGMENTS]}
       />
-      <meshStandardMaterial color="#0a0a0a" metalness={0.95} roughness={0.25} />
     </instancedMesh>
   );
 }

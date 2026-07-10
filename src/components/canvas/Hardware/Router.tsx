@@ -8,19 +8,21 @@
  *
  * Visual signature
  * ----------------
- * - Amber accent stripe at the top (heavier industrial look than the
- *   switch's cyan).
- * - Two clearly-defined PSU outline rectangles on the left.
- * - SFP+ cages are smaller than RJ45 ports and silver-coloured, with
- *   a few amber/red system LEDs floating above the array.
+ * - 3D mode (default): amber accent stripe at the top (heavier
+ *   industrial look than the switch's cyan), PSUs around the left
+ *   third, vent bars in the centre, SFP+ cages on the right.
+ * - Blueprint mode: flat fills, sharp cyan wireframe edges on every
+ *   single-mesh element. Instanced grids (vent bars, SFP cages,
+ *   status LEDs) become solid flat boxes without per-instance edges
+ *   so the schematic stays readable.
  *
  * Implementation
  * --------------
- * - PSU outlines + accent stripe are individual meshes (only a handful,
- *   no instancing needed).
+ * - PSU outlines + accent stripe are individual meshes (only a
+ *   handful, no instancing needed).
  * - Vent bars + SFP cages + LEDs use `<instancedMesh>` for cheap
- *   batching. Vent bars share a single material (uniform black); SFP
- *   cages share a single material (silver); status LEDs use
+ *   batching. Vent bars share a single material (uniform black);
+ *   SFP cages share a single material (silver); status LEDs use
  *   `instanceColor` for per-instance hue via `MeshBasicMaterial`
  *   (`toneMapped: false` so they read as self-illuminated).
  * - Drag / select / cursor / window-release logic is delegated to
@@ -38,7 +40,14 @@ import {
 } from '../../../store/useConfiguratorStore';
 import type { HardwareProps } from '../../../types/rack.types';
 import { useHardwareInteraction } from '../../../hooks/useHardwareInteraction';
-import { SelectionOutline } from './shared';
+import {
+  SelectionOutline,
+  SchematicBox,
+  blueprintChassisMaterial,
+  blueprintBezelMaterial,
+  blueprintAccentMaterial,
+  useIsBlueprint,
+} from './shared';
 
 // ---- Router-specific geometry constants -----------------------------
 const ACCENT_STRIPE_WIDTH = 0.5;
@@ -114,6 +123,18 @@ const ledMaterial = new THREE.MeshBasicMaterial({
   opacity: 0.95,
 });
 
+// Blueprint-mode replacements for instanced / decorative meshes.
+// Module-scoped: allocated once, swapped by reference per render.
+const blueprintPsuMaterial = new THREE.MeshBasicMaterial({
+  color: '#27272a', // zinc-800 — slightly darker than chassis
+});
+const blueprintVentMaterial = new THREE.MeshBasicMaterial({
+  color: '#0a0a0a', // near-black, recessed-look equivalent
+});
+const blueprintSfpMaterial = new THREE.MeshBasicMaterial({
+  color: '#94a3b8', // slate-400 — wireframe-friendly silver
+});
+
 // Two reusable colour instances for per-instance LED tints.
 const LED_GREEN = new THREE.Color('#10b981');
 const LED_RED = new THREE.Color('#ef4444');
@@ -128,6 +149,7 @@ export function Router({ hardware }: RouterProps) {
   const ledRef = useRef<THREE.InstancedMesh>(null);
 
   const interaction = useHardwareInteraction(hardware);
+  const isBlueprint = useIsBlueprint();
 
   const chassisHeight = hardware.rackUnits * RACK_UNIT_HEIGHT - EDGE_GAP;
 
@@ -252,17 +274,35 @@ export function Router({ hardware }: RouterProps) {
       onPointerCancel={interaction.onPointerCancel}
     >
       {/* Main chassis */}
-      <mesh castShadow receiveShadow material={chassisMaterial}>
+      <mesh
+        castShadow={!isBlueprint}
+        receiveShadow={!isBlueprint}
+        material={isBlueprint ? blueprintChassisMaterial : chassisMaterial}
+      >
         <boxGeometry args={[CHASSIS_WIDTH, chassisHeight, hardware.depth]} />
       </mesh>
+      {isBlueprint && (
+        <SchematicBox
+          width={CHASSIS_WIDTH}
+          height={chassisHeight}
+          depth={hardware.depth}
+        />
+      )}
 
       {/* Front bezel — slightly inset, very dark */}
       <mesh
         position={[0, 0, bezelDepthOffset]}
-        material={bezelMaterial}
+        material={isBlueprint ? blueprintBezelMaterial : bezelMaterial}
       >
         <boxGeometry args={[CHASSIS_WIDTH - 0.02, chassisHeight, 0.003]} />
       </mesh>
+      {isBlueprint && (
+        <SchematicBox
+          width={CHASSIS_WIDTH - 0.02}
+          height={chassisHeight}
+          depth={0.003}
+        />
+      )}
 
       {/* Amber accent stripe (heavier industrial look) */}
       <mesh
@@ -271,30 +311,55 @@ export function Router({ hardware }: RouterProps) {
           chassisHeight / 2 - ACCENT_STRIPE_HEIGHT - 0.001,
           bezelDepthOffset + 0.0005,
         ]}
-        material={accentMaterial}
+        material={isBlueprint ? blueprintAccentMaterial : accentMaterial}
       >
-        <boxGeometry args={[ACCENT_STRIPE_WIDTH, ACCENT_STRIPE_HEIGHT, 0.001]} />
+        <boxGeometry
+          args={[ACCENT_STRIPE_WIDTH, ACCENT_STRIPE_HEIGHT, 0.001]}
+        />
       </mesh>
+      {isBlueprint && (
+        <SchematicBox
+          width={ACCENT_STRIPE_WIDTH}
+          height={ACCENT_STRIPE_HEIGHT}
+          depth={0.001}
+        />
+      )}
 
       {/* Dual PSU outline rectangles */}
       <mesh
         position={[psu1X, psuY, bezelDepthOffset + 0.0005]}
-        material={psuMaterial}
+        material={isBlueprint ? blueprintPsuMaterial : psuMaterial}
       >
         <boxGeometry args={[PSU_WIDTH, psuHeight, 0.004]} />
       </mesh>
+      {isBlueprint && (
+        <SchematicBox
+          width={PSU_WIDTH}
+          height={psuHeight}
+          depth={0.004}
+          position={[psu1X, psuY, bezelDepthOffset + 0.0005]}
+        />
+      )}
       <mesh
         position={[psu2X, psuY, bezelDepthOffset + 0.0005]}
-        material={psuMaterial}
+        material={isBlueprint ? blueprintPsuMaterial : psuMaterial}
       >
         <boxGeometry args={[PSU_WIDTH, psuHeight, 0.004]} />
       </mesh>
+      {isBlueprint && (
+        <SchematicBox
+          width={PSU_WIDTH}
+          height={psuHeight}
+          depth={0.004}
+          position={[psu2X, psuY, bezelDepthOffset + 0.0005]}
+        />
+      )}
 
       {/* Vent grille (instanced bars) */}
       <instancedMesh
         ref={ventRef}
         args={[undefined, undefined, VENT_BAR_COUNT]}
-        material={ventMaterial}
+        material={isBlueprint ? blueprintVentMaterial : ventMaterial}
       >
         <boxGeometry args={[VENT_BAR_WIDTH, psuHeight, 0.003]} />
       </instancedMesh>
@@ -303,7 +368,7 @@ export function Router({ hardware }: RouterProps) {
       <instancedMesh
         ref={sfpRef}
         args={[undefined, undefined, totalSfps]}
-        material={sfpMaterial}
+        material={isBlueprint ? blueprintSfpMaterial : sfpMaterial}
       >
         <boxGeometry args={[SFP_W, SFP_H, 0.003]} />
       </instancedMesh>
@@ -320,13 +385,13 @@ export function Router({ hardware }: RouterProps) {
       {/* PSU label slits — two thin dark cuts to read as PSU identity */}
       <mesh
         position={[psu1X, psuY + psuHeight / 2 - 0.01, bezelDepthOffset + 0.001]}
-        material={bezelMaterial}
+        material={isBlueprint ? blueprintBezelMaterial : bezelMaterial}
       >
         <boxGeometry args={[PSU_WIDTH * 0.6, 0.002, 0.001]} />
       </mesh>
       <mesh
         position={[psu2X, psuY + psuHeight / 2 - 0.01, bezelDepthOffset + 0.001]}
-        material={bezelMaterial}
+        material={isBlueprint ? blueprintBezelMaterial : bezelMaterial}
       >
         <boxGeometry args={[PSU_WIDTH * 0.6, 0.002, 0.001]} />
       </mesh>

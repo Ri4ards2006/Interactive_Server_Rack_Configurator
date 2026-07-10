@@ -51,6 +51,19 @@ export interface ConfiguratorState extends RackState {
   /** ID of the hardware currently selected (clicked) by the user, if any. */
   selectedHardwareId: string | null;
 
+  /**
+   * Visual presentation mode for the canvas:
+   *   - `'3D'`: realistic PBR rendering (default) — chassis show
+   *     brushed metal, environment reflections, accent emissives.
+   *   - `'blueprint'`: technical / schematic view — flat fills,
+   *     sharp cyan edge outlines, no environment reflections,
+   *     explicit U-tick labeling on the rails.
+   *
+   * UI-only state — deliberately NOT part of `RackState` so the
+   * blueprint preference never leaks into a save/load format.
+   */
+  viewMode: '3D' | 'blueprint';
+
   // -- Mutators ----------------------------------------------------------
 
   /** Append a new piece of hardware at a sensible default location. */
@@ -64,6 +77,14 @@ export interface ConfiguratorState extends RackState {
 
   /** Set / clear the active selection (used by click + Escape). */
   selectHardware: (id: string | null) => void;
+
+  /**
+   * Flip the visual presentation mode. `Scene.tsx` subscribes to
+   * `viewMode` and re-positions the camera + toggles OrbitControls
+   * accordingly. Each chassis component reads it to swap PBR
+   * materials for the schematic palette.
+   */
+  toggleViewMode: () => void;
 }
 
 /**
@@ -79,6 +100,7 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
   capacity: 42,
   installedHardware: [],
   selectedHardwareId: null,
+  viewMode: '3D',
 
   addHardware: (type, rackUnits) =>
     set((state) => ({
@@ -110,4 +132,9 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
     })),
 
   selectHardware: (id) => set({ selectedHardwareId: id }),
+
+  toggleViewMode: () =>
+    set((state) => ({
+      viewMode: state.viewMode === '3D' ? 'blueprint' : '3D',
+    })),
 }));

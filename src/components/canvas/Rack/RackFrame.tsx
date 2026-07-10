@@ -18,9 +18,21 @@
  * To put the floor at y=0 instead, change the group's `position` to
  * `[0, height/2, 0]`. Hardware positions stay the same either way
  * because the store uses rack-local coordinates.
+ *
+ * Visual signature
+ * ----------------
+ * 3D mode (default): brushed-metal PBR (dark grey, slight roughness).
+ * Blueprint mode: flat-fill dark chassis (matches the chassis colour)
+ * with cyan wireframe edges around every post and beam.
  */
 
+import * as THREE from 'three';
 import { useConfiguratorStore, RACK_UNIT_HEIGHT } from '../../../store/useConfiguratorStore';
+import {
+  SchematicBox,
+  blueprintFrameFillMaterial,
+  useIsBlueprint,
+} from '../Hardware/shared';
 
 // -- Static geometry constants -----------------------------------------
 const FRAME_WIDTH = 0.6; // 19" rails ≈ 0.48m internal, ~0.6m external
@@ -28,16 +40,18 @@ const FRAME_DEPTH = 0.8;
 const POST_SIZE = 0.04; // corner-post thickness
 const BEAM_HEIGHT = 0.04; // top/bottom beam thickness
 
-// Hoist material to module scope so all frame meshes share it (allocates
-// once at import time, not on every render).
-const frameMaterial = {
+// Hoisted PBR material (allocated once at import time, shared across
+// every frame mesh). The conditional swap to `blueprintFrameFillMaterial`
+// in blueprint mode is reference-based — no allocations.
+const frameMaterial = new THREE.MeshStandardMaterial({
   color: '#151515',
   metalness: 0.7,
   roughness: 0.75,
-};
+});
 
 export function RackFrame() {
   const capacity = useConfiguratorStore((s) => s.capacity);
+  const isBlueprint = useIsBlueprint();
   const height = capacity * RACK_UNIT_HEIGHT;
 
   // Posts are placed at the four inner corners of the frame.
@@ -54,35 +68,51 @@ export function RackFrame() {
     <group position={[0, height / 2, 0]}>
       {/* Corner posts */}
       {postPositions.map((pos, idx) => (
-        <mesh
-          key={`post-${idx}`}
-          position={pos}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[POST_SIZE, height, POST_SIZE]} />
-          <meshStandardMaterial {...frameMaterial} />
-        </mesh>
+        <group key={`post-${idx}`} position={pos}>
+          <mesh
+            castShadow={!isBlueprint}
+            receiveShadow={!isBlueprint}
+            material={isBlueprint ? blueprintFrameFillMaterial : frameMaterial}
+          >
+            <boxGeometry args={[POST_SIZE, height, POST_SIZE]} />
+          </mesh>
+          {isBlueprint && (
+            <SchematicBox
+              width={POST_SIZE}
+              height={height}
+              depth={POST_SIZE}
+            />
+          )}
+        </group>
       ))}
 
       {/* Top + bottom beams (front, back) */}
       {[
-        { y: height / 2 - BEAM_HEIGHT / 2, label: 'top-front' },
-        { y: -height / 2 + BEAM_HEIGHT / 2, label: 'bottom-front' },
+        { y: height / 2 - BEAM_HEIGHT / 2, label: 'top' },
+        { y: -height / 2 + BEAM_HEIGHT / 2, label: 'bottom' },
       ].flatMap((row) =>
         [-postZ, postZ].map((z) => (
-          <mesh
+          <group
             key={`${row.label}-${z}`}
             position={[0, row.y, z]}
-            castShadow
-            receiveShadow
           >
-            <boxGeometry args={[FRAME_WIDTH, BEAM_HEIGHT, POST_SIZE]} />
-            <meshStandardMaterial {...frameMaterial} />
-          </mesh>
+            <mesh
+              castShadow={!isBlueprint}
+              receiveShadow={!isBlueprint}
+              material={isBlueprint ? blueprintFrameFillMaterial : frameMaterial}
+            >
+              <boxGeometry args={[FRAME_WIDTH, BEAM_HEIGHT, POST_SIZE]} />
+            </mesh>
+            {isBlueprint && (
+              <SchematicBox
+                width={FRAME_WIDTH}
+                height={BEAM_HEIGHT}
+                depth={POST_SIZE}
+              />
+            )}
+          </group>
         )),
       )}
-
-      </group>
+    </group>
   );
 }

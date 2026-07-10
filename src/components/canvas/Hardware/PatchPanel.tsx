@@ -8,9 +8,13 @@
  *
  * Visual signature
  * ----------------
- * No accent stripe, slightly lighter chassis than the others, and a
- * port form factor slightly larger than RJ45 (keystone jacks are a
- * hair wider/taller than standard RJ45 sockets).
+ * 3D mode (default): no accent stripe, slightly lighter chassis than
+ * the others, and a port form factor slightly larger than RJ45
+ * (keystone jacks are a hair wider/taller than standard RJ45 sockets).
+ *
+ * Blueprint mode: flat fills + sharp cyan wireframe edges on chassis
+ * and bezel. Keystone ports become solid light-gray boxes (no
+ * per-instance edges — would be visually noisy at 24-port rows).
  *
  * Implementation
  * --------------
@@ -32,7 +36,13 @@ import {
 } from '../../../store/useConfiguratorStore';
 import type { HardwareProps } from '../../../types/rack.types';
 import { useHardwareInteraction } from '../../../hooks/useHardwareInteraction';
-import { SelectionOutline } from './shared';
+import {
+  SelectionOutline,
+  SchematicBox,
+  blueprintChassisMaterial,
+  blueprintBezelMaterial,
+  useIsBlueprint,
+} from './shared';
 
 // ---- PatchPanel-specific geometry constants -------------------------
 // Keystone jacks are a touch larger than RJ45 sockets.
@@ -63,14 +73,22 @@ const portMaterial = new THREE.MeshStandardMaterial({
   roughness: 0.55,
 });
 
+// Blueprint-mode replacement material for the keystone port grid.
+// Module-scoped so the conditional swap is a reference assignment.
+const blueprintPortMaterial = new THREE.MeshBasicMaterial({
+  color: '#94a3b8', // slate-400 — pops against the dark chassis fill
+});
+
 interface PatchPanelProps {
   hardware: HardwareProps;
 }
 
 export function PatchPanel({ hardware }: PatchPanelProps) {
   const portRef = useRef<THREE.InstancedMesh>(null);
+  void portRef; // keep TS happy if unused
 
   const interaction = useHardwareInteraction(hardware);
+  const isBlueprint = useIsBlueprint();
 
   const chassisHeight = hardware.rackUnits * RACK_UNIT_HEIGHT - EDGE_GAP;
 
@@ -123,23 +141,41 @@ export function PatchPanel({ hardware }: PatchPanelProps) {
       onPointerCancel={interaction.onPointerCancel}
     >
       {/* Main chassis */}
-      <mesh castShadow receiveShadow material={chassisMaterial}>
+      <mesh
+        castShadow={!isBlueprint}
+        receiveShadow={!isBlueprint}
+        material={isBlueprint ? blueprintChassisMaterial : chassisMaterial}
+      >
         <boxGeometry args={[CHASSIS_WIDTH, chassisHeight, hardware.depth]} />
       </mesh>
+      {isBlueprint && (
+        <SchematicBox
+          width={CHASSIS_WIDTH}
+          height={chassisHeight}
+          depth={hardware.depth}
+        />
+      )}
 
       {/* Front bezel — slightly inset, very dark */}
       <mesh
         position={[0, 0, hardware.depth / 2 + 0.0015]}
-        material={bezelMaterial}
+        material={isBlueprint ? blueprintBezelMaterial : bezelMaterial}
       >
         <boxGeometry args={[CHASSIS_WIDTH - 0.02, chassisHeight, 0.003]} />
       </mesh>
+      {isBlueprint && (
+        <SchematicBox
+          width={CHASSIS_WIDTH - 0.02}
+          height={chassisHeight}
+          depth={0.003}
+        />
+      )}
 
       {/* Keystone port grid (instanced — 1 draw call for the entire array) */}
       <instancedMesh
         ref={portRef}
         args={[undefined, undefined, totalPorts]}
-        material={portMaterial}
+        material={isBlueprint ? blueprintPortMaterial : portMaterial}
         castShadow={false}
       >
         <boxGeometry args={[PORT_W, PORT_H, PORT_INSET_DEPTH]} />

@@ -47,6 +47,8 @@ export function ConfiguratorPanel() {
   const capacity = useConfiguratorStore((s) => s.capacity);
   const addHardware = useConfiguratorStore((s) => s.addHardware);
   const removeHardware = useConfiguratorStore((s) => s.removeHardware);
+  const viewMode = useConfiguratorStore((s) => s.viewMode);
+  const toggleViewMode = useConfiguratorStore((s) => s.toggleViewMode);
 
   const { usedUnits, totalPowerDraw } = useMemo(() => {
     let used = 0;
@@ -66,13 +68,30 @@ export function ConfiguratorPanel() {
       aria-label="Rack configurator panel"
       className="pointer-events-auto absolute right-6 top-6 z-10 flex w-[360px] max-h-[calc(100vh-3rem)] flex-col overflow-hidden rounded-xl border border-zinc-800/80 bg-zinc-950/85 text-zinc-100 shadow-2xl shadow-black/50 backdrop-blur-md font-sans"
     >
-      <header className="flex items-baseline justify-between border-b border-zinc-800/80 px-5 py-4">
+      <header className="flex items-center justify-between border-b border-zinc-800/80 px-5 py-4">
         <h1 className="text-[0.95rem] font-semibold uppercase tracking-[0.18em]">
           Rack Configurator
         </h1>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">
-          EIA-310
-        </span>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={toggleViewMode}
+            aria-label={`Switch to ${viewMode === '3D' ? 'blueprint' : '3D'} view`}
+            title={`Currently ${viewMode} — click to toggle`}
+            className="group flex items-center gap-2 rounded-md border border-zinc-800 bg-zinc-900 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-zinc-300 transition-colors hover:border-zinc-600 hover:bg-zinc-800 active:bg-zinc-900 focus:outline-none focus-visible:ring-1 focus-visible:ring-emerald-400/60"
+          >
+            <span
+              aria-hidden
+              className={`inline-block h-1.5 w-1.5 rounded-full ${
+                viewMode === 'blueprint' ? 'bg-cyan-400' : 'bg-emerald-400'
+              }`}
+            />
+            {viewMode}
+          </button>
+          <span className="font-mono text-[10px] uppercase tracking-wider text-zinc-500">
+            EIA-310
+          </span>
+        </div>
       </header>
 
       {/* Stats: capacity utilization + total power draw */}

@@ -6,8 +6,14 @@
  *
  * Visual signature
  * ----------------
- * Dark chassis + thin cyan accent stripe at the top of the bezel
- * (reads as an enterprise 48-port 1U switch).
+ * 3D mode (default): dark chassis + thin cyan accent stripe at the top
+ * of the bezel (reads as an enterprise 48-port 1U switch).
+ *
+ * Blueprint mode: flat fills, sharp cyan wireframe edges on chassis
+ * + bezel + accent stripe. Ports become solid flat boxes (no per-
+ * instance wireframes — too noisy at 48 instances). LEDs remain
+ * coloured boxes (per-instance hue via `instanceColor`) so the link/
+ * activity pattern is still readable on the schematic.
  *
  * Implementation
  * --------------
@@ -34,7 +40,14 @@ import {
 } from '../../../store/useConfiguratorStore';
 import type { HardwareProps } from '../../../types/rack.types';
 import { useHardwareInteraction } from '../../../hooks/useHardwareInteraction';
-import { SelectionOutline } from './shared';
+import {
+  SelectionOutline,
+  SchematicBox,
+  blueprintChassisMaterial,
+  blueprintBezelMaterial,
+  blueprintAccentMaterial,
+  useIsBlueprint,
+} from './shared';
 
 // ---- Port / accent geometry constants (Switch-specific) -------------
 const PORT_COLS = 24; // columns of RJ45 ports — 24 cols × 2 rows = 48 = classic 1U switch
@@ -81,6 +94,14 @@ const ledMaterial = new THREE.MeshBasicMaterial({
   opacity: 0.95,
 });
 
+// Blueprint-mode replacements. Module-scoped so we don't allocate on
+// every render. LED material is shared between modes (the per-instance
+// color already produces a "self-illuminated" look without needing
+// toneMapping).
+const blueprintPortMaterial = new THREE.MeshBasicMaterial({
+  color: '#e5e7eb', // light gray — pops against the dark chassis fill
+});
+
 // Reused per-instance — `new Color` is cheap but we only need two.
 const LED_GREEN = new THREE.Color('#10b981');
 const LED_AMBER = new THREE.Color('#f59e0b');
@@ -94,6 +115,7 @@ export function Switch({ hardware }: SwitchProps) {
   const ledRef = useRef<THREE.InstancedMesh>(null);
 
   const interaction = useHardwareInteraction(hardware);
+  const isBlueprint = useIsBlueprint();
 
   // Chassis height = U × rackUnits minus the shared edge gap.
   const chassisHeight = hardware.rackUnits * RACK_UNIT_HEIGHT - EDGE_GAP;
@@ -195,17 +217,35 @@ export function Switch({ hardware }: SwitchProps) {
       onPointerCancel={interaction.onPointerCancel}
     >
       {/* Main chassis */}
-      <mesh castShadow receiveShadow material={chassisMaterial}>
+      <mesh
+        castShadow={!isBlueprint}
+        receiveShadow={!isBlueprint}
+        material={isBlueprint ? blueprintChassisMaterial : chassisMaterial}
+      >
         <boxGeometry args={[CHASSIS_WIDTH, chassisHeight, hardware.depth]} />
       </mesh>
+      {isBlueprint && (
+        <SchematicBox
+          width={CHASSIS_WIDTH}
+          height={chassisHeight}
+          depth={hardware.depth}
+        />
+      )}
 
       {/* Front bezel — slightly inset, very dark */}
       <mesh
         position={[0, 0, hardware.depth / 2 + 0.0015]}
-        material={bezelMaterial}
+        material={isBlueprint ? blueprintBezelMaterial : bezelMaterial}
       >
         <boxGeometry args={[CHASSIS_WIDTH - 0.02, chassisHeight, 0.003]} />
       </mesh>
+      {isBlueprint && (
+        <SchematicBox
+          width={CHASSIS_WIDTH - 0.02}
+          height={chassisHeight}
+          depth={0.003}
+        />
+      )}
 
       {/* Cyan accent stripe (brand-style marker) */}
       <mesh
@@ -214,16 +254,25 @@ export function Switch({ hardware }: SwitchProps) {
           chassisHeight / 2 - ACCENT_STRIPE_HEIGHT - 0.001,
           hardware.depth / 2 + 0.002,
         ]}
-        material={accentMaterial}
+        material={isBlueprint ? blueprintAccentMaterial : accentMaterial}
       >
-        <boxGeometry args={[ACCENT_STRIPE_WIDTH, ACCENT_STRIPE_HEIGHT, 0.001]} />
+        <boxGeometry
+          args={[ACCENT_STRIPE_WIDTH, ACCENT_STRIPE_HEIGHT, 0.001]}
+        />
       </mesh>
+      {isBlueprint && (
+        <SchematicBox
+          width={ACCENT_STRIPE_WIDTH}
+          height={ACCENT_STRIPE_HEIGHT}
+          depth={0.001}
+        />
+      )}
 
       {/* RJ45 ports (instanced — 1 draw call) */}
       <instancedMesh
         ref={portRef}
         args={[undefined, undefined, totalPorts]}
-        material={portMaterial}
+        material={isBlueprint ? blueprintPortMaterial : portMaterial}
         castShadow={false}
       >
         <boxGeometry args={[PORT_W, PORT_H, 0.003]} />
