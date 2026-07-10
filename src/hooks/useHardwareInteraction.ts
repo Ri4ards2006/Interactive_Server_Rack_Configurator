@@ -63,6 +63,71 @@ function snapToU(y: number): number {
   return Math.round(y / RACK_UNIT_HEIGHT) * RACK_UNIT_HEIGHT;
 }
 
+/**
+ * Float-precision tolerance for edge-touch checks. Allowing a
+ * sub-millimetre epsilon keeps `dragged chassis exactly touches
+ * neighbour chassis` from being flagged as a collision caused by
+ * IEEE 754 representation noise.
+ */
+const COLLISION_EPSILON = 0.001;
+
+/**
+ * Decide whether a hardware drop is valid:
+ *   1. The dragged chassis's vertical range must fit inside the rack
+ *      bounds (i.e. not overhang the floor or the rack's top edge).
+ *   2. The dragged chassis's vertical range must not overlap any
+ *      OTHER already-installed hardware's vertical range.
+ *
+ * `position[1]` is the chassis's vertical CENTER, so each chassis
+ * spans `(position[1] +/- rackUnits * U / 2)`. Floating-point range
+ * comparison is intentional: the codebase's `addHardware` default
+ * places 1U chassis centers at `U/2` (the slot-CENTER), while the
+ * drag snap rounds to INTEGER-U boundaries, so hardware may
+ * legitimately occupy non-integer-U centers. Comparing the two
+ * ranges directly handles both conventions without off-by-one bugs.
+ */
+export function checkDropValidity(
+  draggingId: string,
+  snappedY: number,
+  rackUnits: number,
+  capacity: number,
+  hardwareList: HardwareProps[],
+): boolean {
+  const halfHeight = (rackUnits * RACK_UNIT_HEIGHT) / 2;
+  const dropMin = snappedY - halfHeight;
+  const dropMax = snappedY + halfHeight;
+
+  // 1. Bounds check (with float-tolerance).
+  if (
+    dropMin < -COLLISION_EPSILON ||
+    dropMax > capacity * RACK_UNIT_HEIGHT + COLLISION_EPSILON
+  ) {
+    return false;
+  }
+
+  // 2. Overlap check against every OTHER installed chassis. Skip
+  //    the dragged item itself (its range naturally overlaps with
+  //    the candidate drop range when we test against ourselves).
+  for (const h of hardwareList) {
+    if (h.id === draggingId) continue;
+
+    const otherHalfHeight = (h.rackUnits * RACK_UNIT_HEIGHT) / 2;
+    const otherMin = h.position[1] - otherHalfHeight;
+    const otherMax = h.position[1] + otherHalfHeight;
+
+    // Two ranges overlap iff each starts before the other ends
+    // (with EPSILON tolerance so edge-touching is allowed).
+    if (
+      dropMax > otherMin + COLLISION_EPSILON &&
+      dropMin < otherMax - COLLISION_EPSILON
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function useHardwareInteraction(
   hardware: HardwareProps,
 ): HardwareInteraction {
@@ -160,21 +225,39 @@ export function useHardwareInteraction(
       e.stopPropagation();
 
       const snappedY = snapToU(e.point.y);
-      // Use the LATEST position so X/Z stay correct even if a
-      // previous move handler already re-rendered this component.
-      const current = useConfiguratorStore.getState().installedHardware.find(
+
+      // Snapshot the persistent store synchronously so ALL reads
+      // (current position, capacity, collision list) are consistent
+      // for this single pointer-move tick — using multiple getState()
+      // calls in succession would be fine but a single read here
+      // makes the data relationship obvious.
+      const persistent = useConfiguratorStore.getState();
+      const current = persistent.installedHardware.find(
         (h) => h.id === hardware.id,
       );
       const x = current?.position[0] ?? hardware.position[0];
       const z = current?.position[2] ?? hardware.position[2];
       const nextPosition: Vec3 = [x, snappedY, z];
 
-      // Commit to persistent store (drives this chassis' render).
-      useConfiguratorStore
-        .getState()
-        .updateHardwarePosition(hardware.id, nextPosition);
-      // Mirror to transient drag store (drives DropIndicator ghost).
-      useDragStore.getState().updateDropPosition(nextPosition);
+      // Collision + bounds check against the canonical rack state.
+      // Result feeds the transient drag store so DropIndicator can
+      // recolor its ghost without coupling to this component's
+      // local React state.
+      const isValid = checkDropValidity(
+        hardware.id,
+        snappedY,
+        hardware.rackUnits,
+        persistent.capacity,
+        persistent.installedHardware,
+      );
+
+      // Commit to persistent store (drives this chassis' render so
+      // it tracks the cursor even when the ghost is "invalid" — the
+      // ghost is purely a visual cue and should not steal control of
+      // where the chassis sits).
+      persistent.updateHardwarePosition(hardware.id, nextPosition);
+      // Mirror to transient drag store with the validity result.
+      useDragStore.getState().updateDropPosition(nextPosition, isValid);
     },
 
     onPointerUp,

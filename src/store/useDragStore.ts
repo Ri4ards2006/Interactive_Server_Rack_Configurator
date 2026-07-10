@@ -54,11 +54,13 @@ interface DragActions {
     depth: number;
   }) => void;
   /**
-   * Update the in-flight drop target. `isValid` is optional and
-   * defaults to `true` so callers that haven't yet wired up their
-   * own collision logic don't have to pass it.
+   * Update the in-flight drop target. `isValid` is REQUIRED — the
+   * caller (the hardware interaction hook) must compute whether
+   * the drop would clip rack bounds or collide with another
+   * installed piece of hardware and pass the resulting boolean
+   * here so the DropIndicator ghost can recolor itself.
    */
-  updateDropPosition: (position: Vec3, isValid?: boolean) => void;
+  updateDropPosition: (position: Vec3, isValid: boolean) => void;
   endDrag: () => void;
 }
 
@@ -84,10 +86,10 @@ export const useDragStore = create<DragStore>((set) => ({
       isValid: true,
     }),
 
-  // Default `isValid = true` keeps any current caller (including
-  // Server.tsx, which writes here on every pointermove) compatible
-  // until collision logic is added in Server.tsx in a follow-up.
-  updateDropPosition: (position, isValid = true) =>
+  // `isValid` is REQUIRED — the hardware interaction hook computes
+  // collision + bounds and passes the boolean here. There is no
+  // default so callers cannot accidentally regress to "always valid".
+  updateDropPosition: (position, isValid) =>
     set({ dropPosition: position, isValid }),
 
   endDrag: () =>
