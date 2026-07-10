@@ -31,6 +31,7 @@ import type { HardwareProps } from '../../types/rack.types';
 import { RackFrame } from './Rack/RackFrame';
 import { RackScrews } from './Rack/RackScrews';
 import { Server } from './Hardware/Server';
+import { DropIndicator } from './interactions/DropIndicator';
 
 /**
  * HardwareMapper
@@ -92,6 +93,8 @@ export function Scene() {
       <RackFrame />
       <RackScrews />
       <HardwareMapper />
+      {/* Ghost preview rendered only while a drag is in progress. */}
+      <DropIndicator />
 
       {/* -- Helpers -----------------------------------------------------*/}
       <ContactShadows

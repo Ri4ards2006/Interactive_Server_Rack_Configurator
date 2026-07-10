@@ -27,10 +27,12 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { useThree, useCursor, type ThreeEvent } from '@react-three/fiber';
+import { useThree, type ThreeEvent } from '@react-three/fiber';
+import { useCursor } from '@react-three/drei';
 import * as THREE from 'three';
 import { useConfiguratorStore, RACK_UNIT_HEIGHT } from '../../../store/useConfiguratorStore';
 import type { HardwareProps } from '../../../types/rack.types';
+import { useDragStore } from '../../../store/useDragStore';
 
 // -- Hoisted PBR materials ---------------------------------------------
 // Module-scoped so they're allocated once and shared across every server.
@@ -79,12 +81,15 @@ export function Server({ hardware }: ServerProps) {
   );
 
   // Cursor feedback: 'grab' on hover, 'grabbing' mid-drag.
+  // drei's useCursor auto-resolves the R3F canvas DOM element from
+  // context, so the third arg is not needed (and on this drei version
+  // it's typed as `string`, which mismatches HTMLCanvasElement).
   const cursorStyle = isDragging
     ? 'grabbing'
     : isHovered
       ? 'grab'
       : 'auto';
-  useCursor(isHovered || isDragging, cursorStyle, gl.domElement);
+  useCursor(isHovered || isDragging, cursorStyle);
 
   // Belt-and-braces drag release: if the cursor leaves the server mesh
   // mid-drag, R3F's onPointerUp no longer fires (raycaster misses), so
@@ -92,7 +97,13 @@ export function Server({ hardware }: ServerProps) {
   // for any `pointerup`/`pointercancel` to force the release.
   useEffect(() => {
     if (!isDragging) return;
-    const endDrag = () => setIsDragging(false);
+    // End BOTH the local drag state AND the transient drag store so
+    // the DropIndicator doesn't get stuck visible if the user releases
+    // the pointer outside the server's mesh.
+    const endDrag = () => {
+      setIsDragging(false);
+      useDragStore.getState().endDrag();
+    };
     window.addEventListener('pointerup', endDrag);
     window.addEventListener('pointercancel', endDrag);
     window.addEventListener('blur', endDrag);
@@ -107,6 +118,14 @@ export function Server({ hardware }: ServerProps) {
     e.stopPropagation();
     selectHardware(hardware.id);
     setIsDragging(true);
+    // Publish the drag snapshot to the transient store so scene-level
+    // helpers (DropIndicator) can render a ghost without coupling to
+    // this component's local `isDragging` state.
+    useDragStore.getState().beginDrag({
+      id: hardware.id,
+      rackUnits: hardware.rackUnits,
+      depth: hardware.depth,
+    });
     // Capture the pointer on the canvas DOM element so drag motion
     // continues to fire even if the cursor leaves the server's mesh.
     gl.domElement.setPointerCapture(e.pointerId);
@@ -123,11 +142,19 @@ export function Server({ hardware }: ServerProps) {
       snappedY,
       hardware.position[2],
     ]);
+    // Mirror the snap target into the transient drag store so the
+    // DropIndicator can preview where the chassis will land.
+    useDragStore.getState().updateDropPosition([
+      hardware.position[0],
+      snappedY,
+      hardware.position[2],
+    ]);
   };
 
   const handlePointerUp = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
     setIsDragging(false);
+    useDragStore.getState().endDrag();
     if (gl.domElement.hasPointerCapture(e.pointerId)) {
       gl.domElement.releasePointerCapture(e.pointerId);
     }
