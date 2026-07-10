@@ -19,32 +19,24 @@
  * - Every material is module-scoped (allocated once at import time).
  *   The instance matrices / colors are seeded in `useLayoutEffect` so
  *   the chassis never renders at the origin frame on mount.
- * - Drag / select / cursor / window-release contract is byte-for-byte
- *   identical to Server.tsx — see that file's long-form JSDoc for the
- *   rationale; the rest of the configurator treats every piece of
- *   equipment the same way.
+ * - Drag / select / cursor / window-release logic is delegated to
+ *   `useHardwareInteraction`. The selection halo is the shared
+ *   `<SelectionOutline />` component so its size + material stay in
+ *   lockstep with the other three chassis types.
  */
 
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react';
-import { useThree, type ThreeEvent } from '@react-three/fiber';
-import { useCursor } from '@react-three/drei';
+import { useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import {
-  useConfiguratorStore,
   RACK_UNIT_HEIGHT,
+  CHASSIS_WIDTH,
+  EDGE_GAP,
 } from '../../../store/useConfiguratorStore';
 import type { HardwareProps } from '../../../types/rack.types';
-import { useDragStore } from '../../../store/useDragStore';
+import { useHardwareInteraction } from '../../../hooks/useHardwareInteraction';
+import { SelectionOutline } from './shared';
 
-// ---- Geometry constants shared with Server.tsx ------------------------
-const CHASSIS_WIDTH = 0.85;
-const EDGE_GAP = 0.005;
-
+// ---- Port / accent geometry constants (Switch-specific) -------------
 const PORT_COLS = 24; // columns of RJ45 ports — 24 cols × 2 rows = 48 = classic 1U switch
 const PORT_W = 0.014;
 const PORT_H = 0.008;
@@ -64,14 +56,6 @@ const bezelMaterial = new THREE.MeshStandardMaterial({
   color: '#050505',
   metalness: 0.4,
   roughness: 0.25,
-});
-
-const selectionMaterial = new THREE.MeshBasicMaterial({
-  color: '#22d3ee', // cyan-400 — matches Server.tsx selection outline
-  wireframe: true,
-  transparent: true,
-  opacity: 0.55,
-  depthTest: false, // stay visible behind other hardware
 });
 
 const accentMaterial = new THREE.MeshStandardMaterial({
@@ -106,93 +90,24 @@ interface SwitchProps {
 }
 
 export function Switch({ hardware }: SwitchProps) {
-  const groupRef = useRef<THREE.Group>(null);
   const portRef = useRef<THREE.InstancedMesh>(null);
   const ledRef = useRef<THREE.InstancedMesh>(null);
 
-  const [isHovered, setIsHovered] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
+  const interaction = useHardwareInteraction(hardware);
 
-  const { gl } = useThree();
-
-  // Tight selector — re-render only on this hardware's own selection flip.
-  const isSelected = useConfiguratorStore(
-    (s) => s.selectedHardwareId === hardware.id,
-  );
-  const selectHardware = useConfiguratorStore((s) => s.selectHardware);
-  const updateHardwarePosition = useConfiguratorStore(
-    (s) => s.updateHardwarePosition,
-  );
-
-  const cursorStyle = isDragging
-    ? 'grabbing'
-    : isHovered
-      ? 'grab'
-      : 'auto';
-  useCursor(isHovered || isDragging, cursorStyle);
-
-  // Belt-and-braces: if the cursor leaves the mesh mid-drag, R3F's
-  // onPointerUp stops firing, so we also listen on `window`.
-  useEffect(() => {
-    if (!isDragging) return;
-    const endDrag = () => {
-      setIsDragging(false);
-      useDragStore.getState().endDrag();
-    };
-    window.addEventListener('pointerup', endDrag);
-    window.addEventListener('pointercancel', endDrag);
-    window.addEventListener('blur', endDrag);
-    return () => {
-      window.removeEventListener('pointerup', endDrag);
-      window.removeEventListener('pointercancel', endDrag);
-      window.removeEventListener('blur', endDrag);
-    };
-  }, [isDragging]);
-
-  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    selectHardware(hardware.id);
-    setIsDragging(true);
-    useDragStore.getState().beginDrag({
-      id: hardware.id,
-      rackUnits: hardware.rackUnits,
-      depth: hardware.depth,
-    });
-    gl.domElement.setPointerCapture(e.pointerId);
-  };
-
-  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
-    if (!isDragging) return;
-    e.stopPropagation();
-    const snappedY =
-      Math.round(e.point.y / RACK_UNIT_HEIGHT) * RACK_UNIT_HEIGHT;
-    updateHardwarePosition(hardware.id, [
-      hardware.position[0],
-      snappedY,
-      hardware.position[2],
-    ]);
-    useDragStore.getState().updateDropPosition([
-      hardware.position[0],
-      snappedY,
-      hardware.position[2],
-    ]);
-  };
-
-  const handlePointerUp = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    setIsDragging(false);
-    useDragStore.getState().endDrag();
-    if (gl.domElement.hasPointerCapture(e.pointerId)) {
-      gl.domElement.releasePointerCapture(e.pointerId);
-    }
-  };
+  // Chassis height = U × rackUnits minus the shared edge gap.
+  const chassisHeight = hardware.rackUnits * RACK_UNIT_HEIGHT - EDGE_GAP;
 
   // Tile the port rows vertically to fit whatever rackUnits the user
-  // picked; a 1U chassis comfortably fits 2 rows.
-  const chassisHeight = hardware.rackUnits * RACK_UNIT_HEIGHT - EDGE_GAP;
+  // picked; a 1U chassis comfortably fits 2 rows. Recomputed every
+  // render so a future rackUnits change re-seeds the instanced meshes
+  // via the useLayoutEffect below.
   const portRows = Math.max(
     1,
-    Math.floor((chassisHeight - ACCENT_STRIPE_HEIGHT - 0.004) / (PORT_H + PORT_GAP_Y)),
+    Math.floor(
+      (chassisHeight - ACCENT_STRIPE_HEIGHT - 0.004) /
+        (PORT_H + PORT_GAP_Y),
+    ),
   );
 
   const totalPorts = portRows * PORT_COLS;
@@ -209,7 +124,7 @@ export function Switch({ hardware }: SwitchProps) {
   const startY =
     -totalGridH / 2 +
     PORT_H / 2 -
-    (ACCENT_STRIPE_HEIGHT / 2) -
+    ACCENT_STRIPE_HEIGHT / 2 -
     0.001;
 
   const portDepthOffset = hardware.depth / 2 + 0.002;
@@ -271,20 +186,13 @@ export function Switch({ hardware }: SwitchProps) {
 
   return (
     <group
-      ref={groupRef}
       position={hardware.position}
-      onPointerOver={(e) => {
-        e.stopPropagation();
-        setIsHovered(true);
-      }}
-      onPointerOut={(e) => {
-        e.stopPropagation();
-        setIsHovered(false);
-      }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
+      onPointerOver={interaction.onPointerOver}
+      onPointerOut={interaction.onPointerOut}
+      onPointerDown={interaction.onPointerDown}
+      onPointerMove={interaction.onPointerMove}
+      onPointerUp={interaction.onPointerUp}
+      onPointerCancel={interaction.onPointerCancel}
     >
       {/* Main chassis */}
       <mesh castShadow receiveShadow material={chassisMaterial}>
@@ -296,7 +204,7 @@ export function Switch({ hardware }: SwitchProps) {
         position={[0, 0, hardware.depth / 2 + 0.0015]}
         material={bezelMaterial}
       >
-        <boxGeometry args={[0.83, chassisHeight, 0.003]} />
+        <boxGeometry args={[CHASSIS_WIDTH - 0.02, chassisHeight, 0.003]} />
       </mesh>
 
       {/* Cyan accent stripe (brand-style marker) */}
@@ -330,21 +238,12 @@ export function Switch({ hardware }: SwitchProps) {
         <boxGeometry args={[0.004, 0.004, 0.001]} />
       </instancedMesh>
 
-      {/* Selection outline (single mesh — selection state only re-renders this switch) */}
-      {isSelected && (
-        <mesh
-          position={[0, 0, 0]}
-          material={selectionMaterial}
-          renderOrder={999}
-        >
-          <boxGeometry
-            args={[
-              0.88,
-              hardware.rackUnits * RACK_UNIT_HEIGHT + 0.01,
-              hardware.depth + 0.01,
-            ]}
-          />
-        </mesh>
+      {/* Shared selection halo */}
+      {interaction.isSelected && (
+        <SelectionOutline
+          rackUnits={hardware.rackUnits}
+          depth={hardware.depth}
+        />
       )}
     </group>
   );

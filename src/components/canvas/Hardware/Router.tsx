@@ -23,30 +23,24 @@
  *   cages share a single material (silver); status LEDs use
  *   `instanceColor` for per-instance hue via `MeshBasicMaterial`
  *   (`toneMapped: false` so they read as self-illuminated).
- * - Drag / select / cursor / window-release contract matches
- *   Server.tsx and Switch.tsx byte-for-byte.
+ * - Drag / select / cursor / window-release logic is delegated to
+ *   `useHardwareInteraction`. The selection halo is the shared
+ *   `<SelectionOutline />` component so it stays in lockstep with
+ *   the other three chassis types.
  */
 
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react';
-import { useThree, type ThreeEvent } from '@react-three/fiber';
-import { useCursor } from '@react-three/drei';
+import { useLayoutEffect, useRef } from 'react';
 import * as THREE from 'three';
 import {
-  useConfiguratorStore,
   RACK_UNIT_HEIGHT,
+  CHASSIS_WIDTH,
+  EDGE_GAP,
 } from '../../../store/useConfiguratorStore';
 import type { HardwareProps } from '../../../types/rack.types';
-import { useDragStore } from '../../../store/useDragStore';
+import { useHardwareInteraction } from '../../../hooks/useHardwareInteraction';
+import { SelectionOutline } from './shared';
 
-// ---- Geometry constants ----------------------------------------------
-const CHASSIS_WIDTH = 0.85;
-const EDGE_GAP = 0.005;
-
+// ---- Router-specific geometry constants -----------------------------
 const ACCENT_STRIPE_WIDTH = 0.5;
 const ACCENT_STRIPE_HEIGHT = 0.002;
 
@@ -86,14 +80,6 @@ const bezelMaterial = new THREE.MeshStandardMaterial({
   color: '#050505',
   metalness: 0.4,
   roughness: 0.25,
-});
-
-const selectionMaterial = new THREE.MeshBasicMaterial({
-  color: '#22d3ee',
-  wireframe: true,
-  transparent: true,
-  opacity: 0.55,
-  depthTest: false,
 });
 
 const accentMaterial = new THREE.MeshStandardMaterial({
@@ -137,84 +123,11 @@ interface RouterProps {
 }
 
 export function Router({ hardware }: RouterProps) {
-  const groupRef = useRef<THREE.Group>(null);
   const ventRef = useRef<THREE.InstancedMesh>(null);
   const sfpRef = useRef<THREE.InstancedMesh>(null);
   const ledRef = useRef<THREE.InstancedMesh>(null);
 
-  const [isHovered, setIsHovered] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const { gl } = useThree();
-
-  const isSelected = useConfiguratorStore(
-    (s) => s.selectedHardwareId === hardware.id,
-  );
-  const selectHardware = useConfiguratorStore((s) => s.selectHardware);
-  const updateHardwarePosition = useConfiguratorStore(
-    (s) => s.updateHardwarePosition,
-  );
-
-  const cursorStyle = isDragging
-    ? 'grabbing'
-    : isHovered
-      ? 'grab'
-      : 'auto';
-  useCursor(isHovered || isDragging, cursorStyle);
-
-  useEffect(() => {
-    if (!isDragging) return;
-    const endDrag = () => {
-      setIsDragging(false);
-      useDragStore.getState().endDrag();
-    };
-    window.addEventListener('pointerup', endDrag);
-    window.addEventListener('pointercancel', endDrag);
-    window.addEventListener('blur', endDrag);
-    return () => {
-      window.removeEventListener('pointerup', endDrag);
-      window.removeEventListener('pointercancel', endDrag);
-      window.removeEventListener('blur', endDrag);
-    };
-  }, [isDragging]);
-
-  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    selectHardware(hardware.id);
-    setIsDragging(true);
-    useDragStore.getState().beginDrag({
-      id: hardware.id,
-      rackUnits: hardware.rackUnits,
-      depth: hardware.depth,
-    });
-    gl.domElement.setPointerCapture(e.pointerId);
-  };
-
-  const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
-    if (!isDragging) return;
-    e.stopPropagation();
-    const snappedY =
-      Math.round(e.point.y / RACK_UNIT_HEIGHT) * RACK_UNIT_HEIGHT;
-    updateHardwarePosition(hardware.id, [
-      hardware.position[0],
-      snappedY,
-      hardware.position[2],
-    ]);
-    useDragStore.getState().updateDropPosition([
-      hardware.position[0],
-      snappedY,
-      hardware.position[2],
-    ]);
-  };
-
-  const handlePointerUp = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    setIsDragging(false);
-    useDragStore.getState().endDrag();
-    if (gl.domElement.hasPointerCapture(e.pointerId)) {
-      gl.domElement.releasePointerCapture(e.pointerId);
-    }
-  };
+  const interaction = useHardwareInteraction(hardware);
 
   const chassisHeight = hardware.rackUnits * RACK_UNIT_HEIGHT - EDGE_GAP;
 
@@ -330,20 +243,13 @@ export function Router({ hardware }: RouterProps) {
 
   return (
     <group
-      ref={groupRef}
       position={hardware.position}
-      onPointerOver={(e) => {
-        e.stopPropagation();
-        setIsHovered(true);
-      }}
-      onPointerOut={(e) => {
-        e.stopPropagation();
-        setIsHovered(false);
-      }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onPointerCancel={handlePointerUp}
+      onPointerOver={interaction.onPointerOver}
+      onPointerOut={interaction.onPointerOut}
+      onPointerDown={interaction.onPointerDown}
+      onPointerMove={interaction.onPointerMove}
+      onPointerUp={interaction.onPointerUp}
+      onPointerCancel={interaction.onPointerCancel}
     >
       {/* Main chassis */}
       <mesh castShadow receiveShadow material={chassisMaterial}>
@@ -355,7 +261,7 @@ export function Router({ hardware }: RouterProps) {
         position={[0, 0, bezelDepthOffset]}
         material={bezelMaterial}
       >
-        <boxGeometry args={[0.83, chassisHeight, 0.003]} />
+        <boxGeometry args={[CHASSIS_WIDTH - 0.02, chassisHeight, 0.003]} />
       </mesh>
 
       {/* Amber accent stripe (heavier industrial look) */}
@@ -425,21 +331,12 @@ export function Router({ hardware }: RouterProps) {
         <boxGeometry args={[PSU_WIDTH * 0.6, 0.002, 0.001]} />
       </mesh>
 
-      {/* Selection outline */}
-      {isSelected && (
-        <mesh
-          position={[0, 0, 0]}
-          material={selectionMaterial}
-          renderOrder={999}
-        >
-          <boxGeometry
-            args={[
-              0.88,
-              hardware.rackUnits * RACK_UNIT_HEIGHT + 0.01,
-              hardware.depth + 0.01,
-            ]}
-          />
-        </mesh>
+      {/* Shared selection halo */}
+      {interaction.isSelected && (
+        <SelectionOutline
+          rackUnits={hardware.rackUnits}
+          depth={hardware.depth}
+        />
       )}
     </group>
   );

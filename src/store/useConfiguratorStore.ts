@@ -26,6 +26,24 @@ import {
 export const RACK_UNIT_HEIGHT = 0.04445;
 
 /**
+ * Shared chassis geometry constants. These are the source of truth for
+ * every piece of hardware in the rack so adjacent chassis line up
+ * perfectly regardless of type.
+ *
+ * - `CHASSIS_WIDTH` is the outer width of a 19" mounted chassis.
+ * - `EDGE_GAP` is a tiny vertical inset subtracted from the chassis
+ *   height so stacked units have a thin visible rail-seam between them.
+ * - `SELECTION_OUTLINE_WIDTH` / `SELECTION_OUTLINE_INSET` describe a
+ *   bounding box slightly LARGER than the chassis, used to render the
+ *   cyan selection halo. Keeping these constants here means the
+ *   halo can't drift away from the chassis dimensions.
+ */
+export const CHASSIS_WIDTH = 0.85;
+export const EDGE_GAP = 0.005;
+export const SELECTION_OUTLINE_WIDTH = 0.88;
+export const SELECTION_OUTLINE_INSET = 0.01;
+
+/**
  * Runtime Zustand state: persisted rack data + ephemeral UI state + mutators.
  * Extends `RackState` to keep the data shape in lockstep across the codebase.
  */

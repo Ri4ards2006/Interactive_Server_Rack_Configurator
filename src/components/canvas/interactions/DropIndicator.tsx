@@ -24,16 +24,23 @@
  *
  * Visual conventions match Server.tsx so the indicator reads as
  * "this is exactly where the chassis will land":
- *   - chassis width:   0.85 m
+ *   - chassis width:   CHASSIS_WIDTH
  *   - chassis height:  rackUnits * RACK_UNIT_HEIGHT - EDGE_GAP
  *   - chassis depth:   hardware depth (typically 0.6 m)
  *   - position[1]:     the snapped VERTICAL CENTER in rack-local coords
+ *
+ * These constants are now imported from `useConfiguratorStore` so the
+ * ghost can never drift away from real chassis dimensions.
  */
 
 import { useShallow } from 'zustand/react/shallow';
 import * as THREE from 'three';
 import { useDragStore } from '../../../store/useDragStore';
-import { RACK_UNIT_HEIGHT } from '../../../store/useConfiguratorStore';
+import {
+  CHASSIS_WIDTH,
+  EDGE_GAP,
+  RACK_UNIT_HEIGHT,
+} from '../../../store/useConfiguratorStore';
 
 // Module-scoped materials — allocated once at import time, never
 // recreated inside the render loop. Both materials share `depthWrite:
@@ -51,11 +58,6 @@ const invalidMaterial = new THREE.MeshBasicMaterial({
   opacity: 0.35,
   depthWrite: false,
 });
-
-// Must stay in lockstep with Server.tsx's chassis dimensions so the
-// ghost visually replaces the dragged server 1:1.
-const CHASSIS_WIDTH = 0.85;
-const EDGE_GAP = 0.005;
 
 export function DropIndicator() {
   // Subscribe to all five drag fields atomically. useShallow compares
