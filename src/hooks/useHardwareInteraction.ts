@@ -10,9 +10,8 @@
  *     leaves a chassis mid-drag.
  *   - Pointer-event handlers (`onPointerDown`, `onPointerMove`,
  *     `onPointerUp`, `onPointerCancel`, `onPointerOver`,
- *     `onPointerOut`) wired up against the R3F canvas DOM element for
- *     pointer capture (the blueprint's `e.target as Element` trick
- *     does NOT work because `e.target` here is a THREE Object3D).
+ *     `onPointerOut`) wired up against R3F v9's NATIVE pointer-capture
+ *     API on the event target (no longer needs `gl.domElement`).
  *   - Selection state (`isSelected`) via a tight Zustand selector so
  *     each chassis re-renders ONLY when its own selection flag flips.
  *   - Snap-to-U-tick math on pointermove, mirrored simultaneously
@@ -29,8 +28,8 @@
  * just removes the duplicated boilerplate.
  */
 
-import { useEffect, useState } from 'react';
-import { type ThreeEvent, useThree } from '@react-three/fiber';
+import { useEffect, useRef, useState } from 'react';
+import { type ThreeEvent } from '@react-three/fiber';
 import { useCursor } from '@react-three/drei';
 import { useConfiguratorStore } from '../store/useConfiguratorStore';
 import { useDragStore } from '../store/useDragStore';
@@ -60,15 +59,41 @@ export interface HardwareInteraction {
  * plain Vitest Node environment without pulling in React / R3F /
  * Zustand imports. This hook just wires them to the R3F event
  * system and our stores.
+ *
+ * Pointer-capture mechanics
+ * -------------------------
+ * R3F v9 (the version pinned to this project) exposes the underlying
+ * DOM `Element` as `e.target` on every `ThreeEvent`. That means we
+ * can call `e.target.setPointerCapture(e.pointerId)` / `releasePointerCapture`
+ * / `hasPointerCapture` directly without poking into R3F's `gl.domElement`
+ * — capturing binds to the same DOM node the browser already routes
+ * pointer events through during a drag, so drag events keep firing
+ * even when the cursor leaves the chassis mesh.
+ *
+ * Older R3F versions (<v9) exposed `e.target` as a `THREE.Object3D`
+ * and the only way to capture was `gl.domElement.setPointerCapture`.
+ * The original comment in this hook described that approach; it's
+ * preserved in the git history but no longer reflects the codebase.
  */
-
 export function useHardwareInteraction(
   hardware: HardwareProps,
 ): HardwareInteraction {
-  const { gl } = useThree();
-
   const [isHovered, setIsHovered] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+
+  /**
+   * The pointerId of the most recent `setPointerCapture` call.
+   * Tracked so the window-level fallback handlers (pointerup,
+   * pointercancel, blur) can defensively RELEASE the capture
+   * — without needing access to the current event target.
+   *
+   * Babylon-style naked DOM events fired by `window.addEventListener`
+   * cannot be assumed to originate from the canvas, so the fallback
+   * uses `document.querySelector('canvas')` to locate the canvas
+   * and release against it. If the canvas is gone (e.g. tab
+   * navigated away) the optional-chaining no-ops gracefully.
+   */
+  const capturedPointerIdRef = useRef<number | null>(null);
 
   // Tight selector: re-render ONLY when this specific hardware's
   // selection flag flips. Other chassis' selection changes are
@@ -99,6 +124,16 @@ export function useHardwareInteraction(
     const endDrag = () => {
       setIsDragging(false);
       useDragStore.getState().endDrag();
+      // Defensive: if a captured pointer is still live on the canvas
+      // (e.g. blur fired before pointerup, or the user dragged off
+      // the page and the browser didn't auto-release), force-release
+      // it so the cursor isn't locked. Browsers usually auto-release
+      // on pointerup; this is the explicit "if not, do it now" path.
+      if (capturedPointerIdRef.current != null) {
+        const canvas = document.querySelector('canvas');
+        canvas?.releasePointerCapture(capturedPointerIdRef.current);
+        capturedPointerIdRef.current = null;
+      }
     };
     window.addEventListener('pointerup', endDrag);
     window.addEventListener('pointercancel', endDrag);
@@ -114,9 +149,20 @@ export function useHardwareInteraction(
     e.stopPropagation();
     setIsDragging(false);
     useDragStore.getState().endDrag();
-    if (gl.domElement.hasPointerCapture(e.pointerId)) {
-      gl.domElement.releasePointerCapture(e.pointerId);
+    // Release on the same target that received the original
+    // `setPointerCapture` call — in R3F v9 this is the canvas
+    // `Element` exposed as `e.target` on every `ThreeEvent`.
+    // R3F's `IntersectionEvent & Properties<PointerEvent>` narrows
+    // `target` to `EventTarget | null` (PointerEvent's own field
+    // type wins over R3F's `Element` annotation). We cast back to
+    // `Element` because R3F binds pointer events to the canvas at
+    // runtime, so the methods we need (`setPointerCapture`,
+    // `hasPointerCapture`, `releasePointerCapture`) are always available.
+    const targetEl = e.target as Element | null;
+    if (targetEl?.hasPointerCapture(e.pointerId)) {
+      targetEl.releasePointerCapture(e.pointerId);
     }
+    capturedPointerIdRef.current = null;
   };
 
   return {
@@ -146,11 +192,15 @@ export function useHardwareInteraction(
         depth: hardware.depth,
       });
       setIsDragging(true);
-      // Capture the pointer on the CANVAS DOM element — not the
-      // THREE Object3D that R3F's synthetic event exposes as
-      // `e.target`. Without this, drag events stop firing the
-      // moment the cursor leaves the chassis mesh.
-      gl.domElement.setPointerCapture(e.pointerId);
+      // Capture the pointer on the same DOM element that R3F v9
+      // exposes as `e.target` (the canvas). This lets drag events
+      // keep firing even after the cursor leaves the chassis mesh.
+      // We also remember the pointerId so the window-fallback can
+      // explicitly release capture in degenerate teardown paths.
+      // Cast to `Element | null` (see comment in onPointerUp for why
+      // TS sees `EventTarget | null` despite R3F v9's docs).
+      (e.target as Element | null)?.setPointerCapture(e.pointerId);
+      capturedPointerIdRef.current = e.pointerId;
     },
 
     onPointerMove(e) {
