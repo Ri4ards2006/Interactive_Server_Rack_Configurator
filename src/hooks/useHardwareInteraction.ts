@@ -32,13 +32,11 @@
 import { useEffect, useState } from 'react';
 import { type ThreeEvent, useThree } from '@react-three/fiber';
 import { useCursor } from '@react-three/drei';
-import {
-  useConfiguratorStore,
-  RACK_UNIT_HEIGHT,
-} from '../store/useConfiguratorStore';
+import { useConfiguratorStore } from '../store/useConfiguratorStore';
 import { useDragStore } from '../store/useDragStore';
 import type { HardwareProps, Vec3 } from '../types/rack.types';
 import { snapToU } from './snapToU';
+import { checkDropValidity } from '../utils/rackLayout';
 
 export interface HardwareInteraction {
   /** True while the pointer is over this chassis. */
@@ -57,88 +55,12 @@ export interface HardwareInteraction {
 }
 
 /**
- * Snap math lives in `./snapToU` so it can be unit-tested in a
+ * Snap math lives in `./snapToU` and collision math lives in
+ * `../utils/rackLayout.ts`. Both are pure helpers unit-tested in a
  * plain Vitest Node environment without pulling in React / R3F /
- * Zustand imports. This hook just consumes it.
+ * Zustand imports. This hook just wires them to the R3F event
+ * system and our stores.
  */
-
-/**
- * Float-precision tolerance for edge-touch checks. Allowing a
- * sub-millimetre epsilon keeps `dragged chassis exactly touches
- * neighbour chassis` from being flagged as a collision caused by
- * IEEE 754 representation noise.
- */
-const COLLISION_EPSILON = 0.001;
-
-/**
- * Decide whether a hardware drop is valid:
- *   1. The dragged chassis's vertical range must fit inside the rack
- *      bounds (i.e. not overhang the floor or the rack's top edge).
- *   2. The dragged chassis's vertical range must not overlap any
- *      OTHER already-installed hardware's vertical range.
- *
- * `position[1]` is the chassis's vertical CENTER, so each chassis
- * spans `(position[1] +/- rackUnits * U / 2)`. Floating-point range
- * comparison handles the two chassis-alignment conventions without
- * any integer-slot indexing:
- *   - `addHardware` puts chassis centres at slot centres
- *     (`U/2`, `1.5U`, …) for ODD `rackUnits`, and on slot seams
- *     (`0`, `U`, `2U`, …) for EVEN `rackUnits`.
- *   - `snapToU` now snaps drag candidates to identical conventions
- *     (slot centres for odd, slot seams for even), so a candidate
- *     and an existing chassis share one of two footprint sets
- *     (`[nU, nU+U)` for odd block, `[nU-U/2, nU+U/2)` for even
- *     block at the seam `nU`).
- *
- * The `COLLISION_EPSILON` floats the overlap test by 1 mm so that
- * (a) IEEE 754 representation noise doesn't trigger spurious
- * collisions and (b) two perfectly-adjacent chassis whose EDGES
- * touch at a slot seam (e.g. a 1U at slot 0 vs a 1U at slot 1)
- * report VALID — mirroring the EIA-310 convention of chassis
- * sitting flush against their neighbour's edge. Adjacent chassis
- * centres are `U` apart in this case, not `0.5U`.
- */
-export function checkDropValidity(
-  draggingId: string,
-  snappedY: number,
-  rackUnits: number,
-  capacity: number,
-  hardwareList: HardwareProps[],
-): boolean {
-  const halfHeight = (rackUnits * RACK_UNIT_HEIGHT) / 2;
-  const dropMin = snappedY - halfHeight;
-  const dropMax = snappedY + halfHeight;
-
-  // 1. Bounds check (with float-tolerance).
-  if (
-    dropMin < -COLLISION_EPSILON ||
-    dropMax > capacity * RACK_UNIT_HEIGHT + COLLISION_EPSILON
-  ) {
-    return false;
-  }
-
-  // 2. Overlap check against every OTHER installed chassis. Skip
-  //    the dragged item itself (its range naturally overlaps with
-  //    the candidate drop range when we test against ourselves).
-  for (const h of hardwareList) {
-    if (h.id === draggingId) continue;
-
-    const otherHalfHeight = (h.rackUnits * RACK_UNIT_HEIGHT) / 2;
-    const otherMin = h.position[1] - otherHalfHeight;
-    const otherMax = h.position[1] + otherHalfHeight;
-
-    // Two ranges overlap iff each starts before the other ends
-    // (with EPSILON tolerance so edge-touching is allowed).
-    if (
-      dropMax > otherMin + COLLISION_EPSILON &&
-      dropMin < otherMax - COLLISION_EPSILON
-    ) {
-      return false;
-    }
-  }
-
-  return true;
-}
 
 export function useHardwareInteraction(
   hardware: HardwareProps,
