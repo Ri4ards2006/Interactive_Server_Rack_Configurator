@@ -1,31 +1,33 @@
 /**
  * useHardwareInteraction.ts
  *
- * Custom hook that encapsulates EVERY shared interaction concern for a
- * piece of rack hardware:
+ * React-orchestration layer for a piece of rack hardware's pointer
+ * interactions. The dense drag-event logic (capture, snap, collision,
+ * release) lives in `./interactionHandlers.ts` as pure-ish functions
+ * of `(ThreeEvent, DragInteractionContext)`. This hook assembles
+ * that context from local React state + refs + store actions and
+ * returns the 6 spreadable handlers R3F's `<group>` expects.
  *
- *   - Hover state (`isHovered`) + cursor style (`grab` → `grabbing`).
- *   - Drag state (`isDragging`) + belt-and-braces window-fallback so
- *     the local + global drag state never gets stuck if the cursor
- *     leaves a chassis mid-drag.
- *   - Pointer-event handlers (`onPointerDown`, `onPointerMove`,
- *     `onPointerUp`, `onPointerCancel`, `onPointerOver`,
- *     `onPointerOut`) wired up against R3F v9's NATIVE pointer-capture
- *     API on the event target (no longer needs `gl.domElement`).
- *   - Selection state (`isSelected`) via a tight Zustand selector so
- *     each chassis re-renders ONLY when its own selection flag flips.
- *   - Snap-to-U-tick math on pointermove, mirrored simultaneously
- *     to the persistent `useConfiguratorStore` AND the transient
- *     `useDragStore` (the latter for the DropIndicator ghost).
+ * What stays here vs what moved out:
+ *   - HERE: React pieces (`useState`, `useEffect`, `useRef`, `useCursor`),
+ *     the Zustand selection selector, the window-fallback cleanup
+ *     arrow (carries its own capture-release path because it receives
+ *     naked window events without a ThreeEvent target), and the tiny
+ *     hover handlers (over/out are 1-line toggles).
+ *   - OUT (in interactionHandlers): drag handlers (down/move/up),
+ *     the `asElement` runtime type-narrowing helper, the snapshot
+ *     types `DragSnapshot` / `PersistentStateSnapshot`, and the
+ *     `DragInteractionContext` interface.
+ *
+ * Behavior is byte-equivalent to the prior inline implementation —
+ * the refactor just removes duplicated boilerplate from the four
+ * chassis components (`Server.tsx`, `Switch.tsx`, `Router.tsx`,
+ * `PatchPanel.tsx`).
  *
  * Usage from a chassis component:
  *
  *   const { isSelected, ...handlers } = useHardwareInteraction(hardware);
  *   return <group {...handlers} position={...}>...</group>;
- *
- * Behavior is byte-equivalent to the original copies inlined in
- * Server.tsx / Switch.tsx / Router.tsx / PatchPanel.tsx — the refactor
- * just removes the duplicated boilerplate.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -33,9 +35,13 @@ import { type ThreeEvent } from '@react-three/fiber';
 import { useCursor } from '@react-three/drei';
 import { useConfiguratorStore } from '../store/useConfiguratorStore';
 import { useDragStore } from '../store/useDragStore';
-import type { HardwareProps, Vec3 } from '../types/rack.types';
-import { snapToU } from './snapToU';
-import { checkDropValidity } from '../utils/rackLayout';
+import type { HardwareProps } from '../types/rack.types';
+import {
+  DragInteractionContext,
+  handlePointerDown,
+  handlePointerMove,
+  handlePointerUp,
+} from './interactionHandlers';
 
 export interface HardwareInteraction {
   /** True while the pointer is over this chassis. */
@@ -54,50 +60,16 @@ export interface HardwareInteraction {
 }
 
 /**
- * Snap math lives in `./snapToU` and collision math lives in
- * `../utils/rackLayout.ts`. Both are pure helpers unit-tested in a
- * plain Vitest Node environment without pulling in React / R3F /
- * Zustand imports. This hook just wires them to the R3F event
- * system and our stores.
- *
  * Pointer-capture mechanics
  * -------------------------
- * R3F v9 (the version pinned to this project) exposes the underlying
- * DOM `Element` as `e.target` on every `ThreeEvent`. That means we
- * can call `e.target.setPointerCapture(e.pointerId)` / `releasePointerCapture`
- * / `hasPointerCapture` directly without poking into R3F's `gl.domElement`
- * — capturing binds to the same DOM node the browser already routes
- * pointer events through during a drag, so drag events keep firing
- * even when the cursor leaves the chassis mesh.
- *
+ * R3F v9 exposes the underlying DOM `Element` as `e.target` on every
+ * `ThreeEvent`. The drag handlers call `e.target.setPointerCapture` /
+ * `releasePointerCapture` / `hasPointerCapture` via the
+ * `asElement` runtime-narrowing helper in `interactionHandlers`.
  * Older R3F versions (<v9) exposed `e.target` as a `THREE.Object3D`
- * and the only way to capture was `gl.domElement.setPointerCapture`.
- * The original comment in this hook described that approach; it's
- * preserved in the git history but no longer reflects the codebase.
+ * and required `gl.domElement.setPointerCapture` — the codebase
+ * predates v9 and the prior approach is documented in git history.
  */
-
-/**
- * Narrow an R3F v9 `ThreeEvent.target` from the structural
- * `EventTarget | null` (forced by `IntersectionEvent<T> & Properties<T>`
- * inheriting PointerEvent's own typing) back down to `Element` so
- * callers can invoke pointer-capture methods without per-callsite
- * `as` casts.
- *
- * Runtime guard: if the target somehow isn't an `Element` (rare
- * upstream regression or future R3F refactor), returns `null` instead
- * of throwing. Callers use optional chaining (`?.`) to skip the
- * capture operation gracefully — the drag's local React state and
- * dragstore are torn down regardless by the caller, so a missed
- * capture is benign.
- *
- * Defined once at module scope. ~ns runtime cost via a single
- * `instanceof` check at the call site; no heap allocations per drag
- * tick.
- */
-function asElement(target: EventTarget | null): Element | null {
-  return target instanceof Element ? target : null;
-}
-
 export function useHardwareInteraction(
   hardware: HardwareProps,
 ): HardwareInteraction {
@@ -105,29 +77,21 @@ export function useHardwareInteraction(
   const [isDragging, setIsDragging] = useState(false);
 
   /**
-   * The pointerId of the most recent `setPointerCapture` call.
-   * Tracked so the window-level fallback handlers (pointerup,
-   * pointercancel, blur) can defensively RELEASE the capture
-   * — without needing access to the current event target.
-   *
-   * Babylon-style naked DOM events fired by `window.addEventListener`
-   * cannot be assumed to originate from the canvas, so the fallback
-   * uses `document.querySelector('canvas')` to locate the canvas
-   * and release against it. If the canvas is gone (e.g. tab
-   * navigated away) the optional-chaining no-ops gracefully.
+   * Tracks the pointerId of the most recent `setPointerCapture` call.
+   * Read by the window-fallback cleanup arrow below to release any
+   * capture that wasn't auto-released by the browser (e.g. when
+   * `blur` fires before any `pointerup`).
    */
   const capturedPointerIdRef = useRef<number | null>(null);
 
-  // Tight selector: re-render ONLY when this specific hardware's
-  // selection flag flips. Other chassis' selection changes are
-  // invisible to us.
+  // Tight Zustand selector: this chassis re-renders ONLY when its
+  // own `selectedHardwareId` flips, not on every selection change.
   const isSelected = useConfiguratorStore(
     (s) => s.selectedHardwareId === hardware.id,
   );
 
-  // Cursor feedback: 'grab' on hover, 'grabbing' mid-drag. drei's
-  // useCursor auto-resolves the canvas DOM element from R3F context,
-  // so we don't pass it as the third arg.
+  // Cursor feedback: drei's `useCursor` writes `grab` / `grabbing` /
+  // reset to the canvas via R3F context — no second arg needed.
   const cursorActive = isHovered || isDragging;
   const cursorStyle: 'grab' | 'grabbing' | 'auto' = isDragging
     ? 'grabbing'
@@ -136,22 +100,34 @@ export function useHardwareInteraction(
       : 'auto';
   useCursor(cursorActive, cursorStyle);
 
-  // Belt-and-braces drag release: if the cursor leaves the chassis
-  // mid-drag, R3F's onPointerUp no longer fires (raycaster misses),
-  // so we ALSO listen on `window` for any `pointerup`,
-  // `pointercancel`, or `blur` to force the release. This prevents
-  // both the local `isDragging` flag AND the global drag store from
-  // getting stuck `true`.
+  /**
+   * Belt-and-braces drag release. If the cursor leaves the chassis
+   * mid-drag, R3F's `onPointerUp` no longer fires (raycaster misses)
+   * and the drag state could stay `true` forever. We side-channel
+   * via `window.addEventListener` for `pointerup`, `pointercancel`,
+   * and `blur` to force a clean teardown regardless of where the
+   * pointer ends up.
+   *
+   * Why does this cleanup arrow stay local (vs being moved to
+   * `interactionHandlers` alongside the other handlers)? Because the
+   * window events arrive WITHOUT a ThreeEvent target — `e.target` on
+   * a naked DOM `PointerEvent` from `window` may be any element, and
+   * the canvas's `releasePointerCapture` is what we actually need.
+   * Synthesizing a ThreeEvent to feed through `handlePointerUp`
+   * would be over-engineered and would re-introduce the multi-
+   * canvas `querySelector('canvas')` ambiguity upstream called out
+   * below. So this arrow keeps its own minimal capture-release path.
+   */
   useEffect(() => {
     if (!isDragging) return;
     const endDrag = () => {
       setIsDragging(false);
       useDragStore.getState().endDrag();
       // Defensive: if a captured pointer is still live on the canvas
-      // (e.g. blur fired before pointerup, or the user dragged off
-      // the page and the browser didn't auto-release), force-release
-      // it so the cursor isn't locked. Browsers usually auto-release
-      // on pointerup; this is the explicit "if not, do it now" path.
+      // (blur fired before pointerup, or the user dragged off the
+      // page and the browser didn't auto-release), force-release it
+      // so the cursor isn't locked. Browser auto-release is the
+      // primary path; this is the explicit "if not, do it now" path.
       if (capturedPointerIdRef.current != null) {
         const canvas = document.querySelector('canvas');
         canvas?.releasePointerCapture(capturedPointerIdRef.current);
@@ -168,20 +144,33 @@ export function useHardwareInteraction(
     };
   }, [isDragging]);
 
-  const onPointerUp = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    setIsDragging(false);
-    useDragStore.getState().endDrag();
-    // Release on the same target that received the original
-    // `setPointerCapture` call — in R3F v9 this is the canvas
-    // `Element` exposed as `e.target` on every `ThreeEvent`.
-    // Narrowed through the `asElement` helper above (which documents
-    // why TS sees `EventTarget | null` despite R3F v9's docs).
-    const targetEl = asElement(e.target);
-    if (targetEl?.hasPointerCapture(e.pointerId)) {
-      targetEl.releasePointerCapture(e.pointerId);
-    }
-    capturedPointerIdRef.current = null;
+  /**
+   * Per-render drag-handler context. Stable references (`setIsDragging`,
+   * `capturedPointerIdRef`, store actions) are read once here; volatile
+   * values (`isDragging`, `hardware`) are passed fresh each call.
+   *
+   * `readPersistentState` is a closure over `useConfiguratorStore`
+   * that returns a fresh snapshot on every call. That's required
+   * because `handlePointerMove` reads installedHardware once per
+   * pointermove tick — snapshotting it at render-time would freeze
+   * the installedHardware list if a sibling chassis gets removed
+   * mid-drag.
+   */
+  const ctx: DragInteractionContext = {
+    hardware,
+    isDragging,
+    setIsDragging,
+    capturedPointerIdRef,
+    selectHardware: useConfiguratorStore.getState().selectHardware,
+    updateHardwarePosition:
+      useConfiguratorStore.getState().updateHardwarePosition,
+    readPersistentState: () => {
+      const s = useConfiguratorStore.getState();
+      return { capacity: s.capacity, installedHardware: s.installedHardware };
+    },
+    beginDrag: useDragStore.getState().beginDrag,
+    updateDropPosition: useDragStore.getState().updateDropPosition,
+    endDrag: useDragStore.getState().endDrag,
   };
 
   return {
@@ -189,6 +178,8 @@ export function useHardwareInteraction(
     isSelected,
     isDragging,
 
+    // Hover toggles stay inline: they're 1-line state flips with no
+    // shared logic worth extracting.
     onPointerOver(e) {
       e.stopPropagation();
       setIsHovered(true);
@@ -199,78 +190,16 @@ export function useHardwareInteraction(
       setIsHovered(false);
     },
 
-    onPointerDown(e) {
-      e.stopPropagation();
-      // Select this hardware AND publish a drag snapshot BEFORE
-      // toggling local state, so the transient drag store is ready
-      // by the time the first `onPointerMove` fires.
-      useConfiguratorStore.getState().selectHardware(hardware.id);
-      useDragStore.getState().beginDrag({
-        id: hardware.id,
-        rackUnits: hardware.rackUnits,
-        depth: hardware.depth,
-      });
-      setIsDragging(true);
-      // Capture the pointer on the same DOM element that R3F v9
-      // exposes as `e.target` (the canvas). This lets drag events
-      // keep firing even after the cursor leaves the chassis mesh.
-      // We also remember the pointerId so the window-fallback can
-      // explicitly release capture in degenerate teardown paths.
-      // Narrowed through the `asElement` helper above (see TSDoc for
-      // why TS sees `EventTarget | null` despite R3F v9's docs).
-      asElement(e.target)?.setPointerCapture(e.pointerId);
-      capturedPointerIdRef.current = e.pointerId;
-    },
+    // Drag handlers delegate to the extracted pure-ish functions.
+    // Each wrapper is a thin closure that captures the current `ctx`.
+    onPointerDown: (e) => handlePointerDown(e, ctx),
+    onPointerMove: (e) => handlePointerMove(e, ctx),
+    onPointerUp: (e) => handlePointerUp(e, ctx),
 
-    onPointerMove(e) {
-      // Bail unless this chassis is the active drag target.
-      if (!isDragging) return;
-      e.stopPropagation();
-
-      // `rackUnits` is passed in so `snapToU` knows whether to land
-      // on a slot centre (odd) or a slot seam (even) for this
-      // particular chassis.
-      const snappedY = snapToU(e.point.y, hardware.rackUnits);
-
-      // Snapshot the persistent store synchronously so ALL reads
-      // (current position, capacity, collision list) are consistent
-      // for this single pointer-move tick — using multiple getState()
-      // calls in succession would be fine but a single read here
-      // makes the data relationship obvious.
-      const persistent = useConfiguratorStore.getState();
-      const current = persistent.installedHardware.find(
-        (h) => h.id === hardware.id,
-      );
-      const x = current?.position[0] ?? hardware.position[0];
-      const z = current?.position[2] ?? hardware.position[2];
-      const nextPosition: Vec3 = [x, snappedY, z];
-
-      // Collision + bounds check against the canonical rack state.
-      // Result feeds the transient drag store so DropIndicator can
-      // recolor its ghost without coupling to this component's
-      // local React state.
-      const isValid = checkDropValidity(
-        hardware.id,
-        snappedY,
-        hardware.rackUnits,
-        persistent.capacity,
-        persistent.installedHardware,
-      );
-
-      // Commit to persistent store (drives this chassis' render so
-      // it tracks the cursor even when the ghost is "invalid" — the
-      // ghost is purely a visual cue and should not steal control of
-      // where the chassis sits).
-      persistent.updateHardwarePosition(hardware.id, nextPosition);
-      // Mirror to transient drag store with the validity result.
-      useDragStore.getState().updateDropPosition(nextPosition, isValid);
-    },
-
-    onPointerUp,
-
-    // Treat `pointercancel` identically to a normal pointer-up:
-    // a cancelled drag (e.g. browser scrollbar grab) still cleanly
-    // tears down the pointer capture + drag store via the same path.
-    onPointerCancel: onPointerUp,
+    // `pointercancel` is semantically identical to `pointerup` for
+    // our purposes — a cancelled drag (e.g. browser scrollbar grab,
+    // OS-level pointer handoff) still cleanly tears down capture
+    // + dragstore via the same path.
+    onPointerCancel: (e) => handlePointerUp(e, ctx),
   };
 }
