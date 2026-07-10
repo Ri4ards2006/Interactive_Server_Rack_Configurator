@@ -56,11 +56,49 @@ export interface HardwareInteraction {
 }
 
 /**
- * Snap a world-space Y value to the nearest U-tick (center of a 1U
- * slot where the chassis center lives).
+ * Snap a world-space Y value to the nearest VALID chassis-center tick
+ * for a chassis of the given `rackUnits`.
+ *
+ * Slot-alignment convention
+ * -------------------------
+ * - **Odd `rackUnits` (1U, 3U, 5U …)**: the chassis has ODD height,
+ *   so its center sits at a HALF-U offset — i.e. exactly on a slot
+ *   center (e.g. `0.5U`, `1.5U`, `2.5U`). Anchoring to slot centers
+ *   means a 1U chassis always perfectly fills one slot.
+ * - **Even `rackUnits` (2U, 4U, 6U …)**: the chassis has EVEN
+ *   height, so its center sits on an INTEGER-U boundary — i.e.
+ *   exactly on a slot seam (e.g. `0`, `U`, `2U`). Anchoring to
+ *   slot seams means a 2U chassis always perfectly straddles
+ *   exactly two adjacent slots with equal extents above and below
+ *   the center.
+ *
+ * This mirrors the existing `addHardware` default
+ * (`position[1] = (rackUnits * U) / 2`) so freshly added and
+ * freshly dragged chassis end up at identical alignment. Without
+ * this, 1U chassis would snap onto slot seams (an off-by-half-U bug)
+ * and visibly drift higher than their neighbours.
+ *
+ * The "shift `y` by halfU before Math.round" trick for odd rackUnits
+ * is intentional: `Math.round(0.5) === 1` in JS (half rounds toward
+ * +∞), so without the shift an exact hit on a slot centre (e.g. a
+ * freshly-added 1U chassis at `y = 0.5U`) would round UP to slot 1.
+ *
+ * Pure function: no allocations beyond primitives.
  */
-function snapToU(y: number): number {
-  return Math.round(y / RACK_UNIT_HEIGHT) * RACK_UNIT_HEIGHT;
+function snapToU(y: number, rackUnits: number): number {
+  const u = RACK_UNIT_HEIGHT;
+  const halfU = u / 2;
+  if (rackUnits % 2 === 1) {
+    // Odd: centre sits at slot centres (0.5U, 1.5U, 2.5U, …).
+    // Shift `y` by -halfU so Math.round references a slot-INDEX
+    // (0, 1, 2, …) rather than a slot-seam index (0, 1, 2, …). This
+    // keeps a `y` that exactly hits a slot centre from being
+    // mis-rounded to the next higher slot.
+    const slotIndex = Math.round((y - halfU) / u);
+    return slotIndex * u + halfU;
+  }
+  // Even: centre sits on slot seams (0, U, 2U, …). Straight round.
+  return Math.round(y / u) * u;
 }
 
 /**
@@ -80,11 +118,24 @@ const COLLISION_EPSILON = 0.001;
  *
  * `position[1]` is the chassis's vertical CENTER, so each chassis
  * spans `(position[1] +/- rackUnits * U / 2)`. Floating-point range
- * comparison is intentional: the codebase's `addHardware` default
- * places 1U chassis centers at `U/2` (the slot-CENTER), while the
- * drag snap rounds to INTEGER-U boundaries, so hardware may
- * legitimately occupy non-integer-U centers. Comparing the two
- * ranges directly handles both conventions without off-by-one bugs.
+ * comparison handles the two chassis-alignment conventions without
+ * any integer-slot indexing:
+ *   - `addHardware` puts chassis centres at slot centres
+ *     (`U/2`, `1.5U`, …) for ODD `rackUnits`, and on slot seams
+ *     (`0`, `U`, `2U`, …) for EVEN `rackUnits`.
+ *   - `snapToU` now snaps drag candidates to identical conventions
+ *     (slot centres for odd, slot seams for even), so a candidate
+ *     and an existing chassis share one of two footprint sets
+ *     (`[nU, nU+U)` for odd block, `[nU-U/2, nU+U/2)` for even
+ *     block at the seam `nU`).
+ *
+ * The `COLLISION_EPSILON` floats the overlap test by 1 mm so that
+ * (a) IEEE 754 representation noise doesn't trigger spurious
+ * collisions and (b) two perfectly-adjacent chassis whose EDGES
+ * touch at a slot seam (e.g. a 1U at slot 0 vs a 1U at slot 1)
+ * report VALID — mirroring the EIA-310 convention of chassis
+ * sitting flush against their neighbour's edge. Adjacent chassis
+ * centres are `U` apart in this case, not `0.5U`.
  */
 export function checkDropValidity(
   draggingId: string,
@@ -224,7 +275,10 @@ export function useHardwareInteraction(
       if (!isDragging) return;
       e.stopPropagation();
 
-      const snappedY = snapToU(e.point.y);
+      // `rackUnits` is passed in so `snapToU` knows whether to land
+      // on a slot centre (odd) or a slot seam (even) for this
+      // particular chassis.
+      const snappedY = snapToU(e.point.y, hardware.rackUnits);
 
       // Snapshot the persistent store synchronously so ALL reads
       // (current position, capacity, collision list) are consistent
