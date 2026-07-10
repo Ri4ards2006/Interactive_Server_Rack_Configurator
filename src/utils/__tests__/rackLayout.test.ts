@@ -18,7 +18,11 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { checkDropValidity, COLLISION_EPSILON } from '../rackLayout';
+import {
+  checkDropValidity,
+  COLLISION_EPSILON,
+  getChassisFootprint,
+} from '../rackLayout';
 import { RACK_UNIT_HEIGHT } from '../../store/useConfiguratorStore';
 import type { HardwareProps } from '../../types/rack.types';
 
@@ -292,4 +296,233 @@ describe('COLLISION_EPSILON constant', () => {
   it('is exported and equals 0.001 m (1 mm tolerance)', () => {
     expect(COLLISION_EPSILON).toBe(0.001);
   });
+});
+
+// ---------------------------------------------------------------------------
+// 5. getChassisFootprint helper
+// ---------------------------------------------------------------------------
+
+describe('getChassisFootprint — chassis geometry helper', () => {
+  it('1U at slot 0 centre (snapY = 0.5U) → {min: 0, max: U}', () => {
+    expect(getChassisFootprint(0.5 * U, 1)).toEqual({ min: 0, max: U });
+  });
+
+  it('2U at seam 1 (snapY = U) → {min: 0, max: 2U}', () => {
+    expect(getChassisFootprint(U, 2)).toEqual({ min: 0, max: 2 * U });
+  });
+
+  it('3U centred on slot 1 (snapY = 1.5U) → {min: 0, max: 3U}', () => {
+    expect(getChassisFootprint(1.5 * U, 3)).toEqual({ min: 0, max: 3 * U });
+  });
+
+  it('4U centred on seam 2 (snapY = 2U) → {min: 0, max: 4U}', () => {
+    expect(getChassisFootprint(2 * U, 4)).toEqual({ min: 0, max: 4 * U });
+  });
+
+  it('is symmetric about y = 0 — min and max flip signs when y flips', () => {
+    const a = getChassisFootprint(10 * U, 3);
+    const b = getChassisFootprint(-10 * U, 3);
+    expect(a.max).toBeCloseTo(-b.min, 10);
+    expect(a.min).toBeCloseTo(-b.max, 10);
+  });
+
+  it('centre is the arithmetic mean of (min, max)', () => {
+    expect(
+      (getChassisFootprint(7.5 * U, 4).min +
+        getChassisFootprint(7.5 * U, 4).max) /
+        2,
+    ).toBeCloseTo(7.5 * U, 10);
+  });
+
+  it('height equals rackUnits * RACK_UNIT_HEIGHT', () => {
+    const fp1 = getChassisFootprint(0, 5);
+    expect(fp1.max - fp1.min).toBeCloseTo(5 * U, 10);
+    const fp2 = getChassisFootprint(0, 1);
+    expect(fp2.max - fp2.min).toBeCloseTo(U, 10);
+  });
+
+  it('NaN input propagates NaN outputs (pure function — no error correction)', () => {
+    // The helper has no engineering semantics; NaN-in simply
+    // propagates NaN-out per IEEE 754. The drop validator catches
+    // NaN dropped via `Number.isFinite`.
+    const fp = getChassisFootprint(NaN, 1);
+    expect(Number.isNaN(fp.min)).toBe(true);
+    expect(Number.isNaN(fp.max)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 6. Bounds fuzzing — erratic / pathological Y coordinates
+// ---------------------------------------------------------------------------
+//
+// Goal: a downstream consumer might pass wildly wrong values (a
+// bug in the pointer-event handler, a client-side teleportation
+// feature, a deserialised move from a save file with corrupted
+// floats, etc.). The validator must:
+//   (1) never throw,
+//   (2) always return a boolean (never NaN),
+//   (3) reject non-real inputs (NaN, ±Infinity),
+//   (4) reject any input whose footprint escapes the rack bounds,
+//   (5) accept only physically-plausible slot-aligned inputs.
+//
+// Below we exercise the validator against a hand-curated set of
+// extreme Y values spanning six decades of magnitude plus the
+// non-real cases.
+
+describe('checkDropValidity — bounds fuzzing', () => {
+  // Hand-picked extreme Y coordinates covering IEC 754 subnormals,
+  // max-safe-integers, signed infinities, NaN, plus a few slot-
+  // valid values for contrast.
+  const FUZZ_YS: readonly number[] = [
+    // IEC 754 subnormals & tiny
+    Number.MIN_VALUE,
+    -Number.MIN_VALUE,
+    5e-324,
+    -5e-324,
+    1e-300,
+    -1e-300,
+    // Small but representable
+    1e-10,
+    -1e-10,
+    1e-5,
+    -1e-5,
+    0.001,
+    -0.001,
+    // Zero / signed zero
+    0,
+    -0,
+    // Slot-relative
+    U,
+    -U,
+    0.5 * U,
+    -0.5 * U,
+    // Small magnitudes
+    1,
+    -1,
+    10,
+    -10,
+    100,
+    -100,
+    // Mid-range
+    1e3,
+    -1e3,
+    1e6,
+    -1e6,
+    // Massive overflows
+    1e10,
+    -1e10,
+    1e15,
+    -1e15,
+    Number.MAX_SAFE_INTEGER,
+    -Number.MAX_SAFE_INTEGER,
+    // Full IEEE max magnitudes — well beyond MAX_SAFE_INTEGER
+    // (≈9.0e15). A corrupted save file with raw max-double Y is
+    // exercised here.
+    Number.MAX_VALUE,
+    -Number.MAX_VALUE,
+    // Signed infinities
+    Infinity,
+    -Infinity,
+    // NaN
+    NaN,
+  ];
+
+  it.each(FUZZ_YS)(
+    'erratic input y=%s → no throw, valid boolean (never NaN)',
+    (y) => {
+      expect(() =>
+        checkDropValidity('drag', y, 1, 42, []),
+      ).not.toThrow();
+      const result = checkDropValidity('drag', y, 1, 42, []);
+      expect(typeof result).toBe('boolean');
+      expect(Number.isNaN(result)).toBe(false);
+    },
+  );
+
+  it.each(FUZZ_YS)(
+    'chaotic y=%s across rackUnits ∈ {1, 2, 3, 4} never crashes',
+    (y) => {
+      for (const rackUnits of [1, 2, 3, 4]) {
+        expect(() =>
+          checkDropValidity('drag', y, rackUnits, 42, []),
+        ).not.toThrow();
+      }
+    },
+  );
+
+  it.each(FUZZ_YS)(
+    'chaotic y=%s across capacities ∈ {1, 42, 1000} never crashes',
+    (y) => {
+      for (const capacity of [1, 42, 1000]) {
+        expect(() =>
+          checkDropValidity('drag', y, 1, capacity, []),
+        ).not.toThrow();
+      }
+    },
+  );
+
+  // ---- Invariant: non-real inputs ALWAYS rejected ----
+
+  it.each([NaN, Infinity, -Infinity])(
+    'non-real y=%s is REJECTED (Number.isFinite guard)',
+    (y) => {
+      expect(checkDropValidity('drag', y, 1, 42, [])).toBe(false);
+    },
+  );
+
+  // ---- Invariant: massive overflows ALWAYS rejected ----
+
+  it.each([
+    Number.MAX_SAFE_INTEGER,
+    -Number.MAX_SAFE_INTEGER,
+    Number.MAX_VALUE,
+    -Number.MAX_VALUE,
+    1e15,
+    -1e15,
+    1e10,
+    -1e10,
+    1e6,
+    -1e6,
+    1000,
+    -1000,
+  ])(
+    'overflow y=%s (|y| > capacity*U) is REJECTED',
+    (y) => {
+      // 42U rack: even |y| > 1000 is far beyond capacity*U + EPSILON.
+      expect(checkDropValidity('drag', y, 1, 42, [])).toBe(false);
+    },
+  );
+
+  // ---- Invariant: subnormal / near-zero ALWAYS rejected (overhangs floor) ----
+
+  it.each([
+    Number.MIN_VALUE,
+    -Number.MIN_VALUE,
+    5e-324,
+    -5e-324,
+    1e-300,
+    -1e-300,
+    1e-10,
+    -1e-10,
+    1e-5,
+    -1e-5,
+    0.001,
+    -0.001,
+    0,
+    -0,
+  ])(
+    'subnormal/tiny y=%s near the floor is REJECTED (dropMin < -EPSILON)',
+    (y) => {
+      expect(checkDropValidity('drag', y, 1, 42, [])).toBe(false);
+    },
+  );
+
+  // ---- Sanity invariant: slot-valid inputs ACCEPTED in an empty rack ----
+
+  it.each([0.5 * U, 1.5 * U, U, 2 * U, 5 * U, 10 * U, 41.5 * U])(
+    'slot-valid y=%s in empty rack is ACCEPTED',
+    (y) => {
+      expect(checkDropValidity('drag', y, 1, 42, [])).toBe(true);
+    },
+  );
 });
