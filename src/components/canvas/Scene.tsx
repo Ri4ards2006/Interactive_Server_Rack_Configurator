@@ -5,13 +5,11 @@
  * hardware, and orbit controls inside a single <Canvas>.
  *
  * Architectural notes:
- * - `HardwareMapper` lives INSIDE the Canvas tree because it uses R3F's
- *   store. Reading `installedHardware` via `useShallow` ensures the
- *   mapper only re-renders when an item is added / removed / its data
+ * - `HardwareMapper` reads `installedHardware` via `useShallow` so it
+ *   only re-renders when an item is added / removed / its data
  *   actually changes, not on every store mutation.
- * - Only `server` is fully implemented for now. Other HardwareTypes
- *   (`switch`, `router`, `patch-panel`) return `null`. Adding them is
- *   a single switch arm each.
+ * - All four HardwareTypes are dispatched by `HardwareMapper`:
+ *   server, switch, router, patch-panel.
  * - Lights + Environment + ContactShadows give us cheap-but-convincing
  *   PBR: warehouse HDR supplies reflections on the brushed-metal chassis.
  */
@@ -23,42 +21,11 @@ import {
   ContactShadows,
   Grid,
 } from '@react-three/drei';
-import { useShallow } from 'zustand/react/shallow';
-
-import { useConfiguratorStore } from '../../store/useConfiguratorStore';
-import type { HardwareProps } from '../../types/rack.types';
 
 import { RackFrame } from './Rack/RackFrame';
 import { RackScrews } from './Rack/RackScrews';
-import { Server } from './Hardware/Server';
+import { HardwareMapper } from './HardwareMapper';
 import { DropIndicator } from './interactions/DropIndicator';
-
-/**
- * HardwareMapper
- *
- * Reads the installed-hardware array and dispatches each item to the
- * appropriate 3D component. Selector uses `useShallow` so re-renders
- * only happen when array contents actually change.
- */
-function HardwareMapper() {
-  const installedHardware = useConfiguratorStore(
-    useShallow((s) => s.installedHardware),
-  );
-
-  return (
-    <>
-      {installedHardware.map((h: HardwareProps) => {
-        switch (h.type) {
-          case 'server':
-            return <Server key={h.id} hardware={h} />;
-          // TODO: implement Switch, Router, PatchPanel components.
-          default:
-            return null;
-        }
-      })}
-    </>
-  );
-}
 
 export function Scene() {
   return (
