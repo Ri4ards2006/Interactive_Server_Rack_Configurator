@@ -75,6 +75,29 @@ export interface HardwareInteraction {
  * The original comment in this hook described that approach; it's
  * preserved in the git history but no longer reflects the codebase.
  */
+
+/**
+ * Narrow an R3F v9 `ThreeEvent.target` from the structural
+ * `EventTarget | null` (forced by `IntersectionEvent<T> & Properties<T>`
+ * inheriting PointerEvent's own typing) back down to `Element` so
+ * callers can invoke pointer-capture methods without per-callsite
+ * `as` casts.
+ *
+ * Runtime guard: if the target somehow isn't an `Element` (rare
+ * upstream regression or future R3F refactor), returns `null` instead
+ * of throwing. Callers use optional chaining (`?.`) to skip the
+ * capture operation gracefully — the drag's local React state and
+ * dragstore are torn down regardless by the caller, so a missed
+ * capture is benign.
+ *
+ * Defined once at module scope. ~ns runtime cost via a single
+ * `instanceof` check at the call site; no heap allocations per drag
+ * tick.
+ */
+function asElement(target: EventTarget | null): Element | null {
+  return target instanceof Element ? target : null;
+}
+
 export function useHardwareInteraction(
   hardware: HardwareProps,
 ): HardwareInteraction {
@@ -152,13 +175,9 @@ export function useHardwareInteraction(
     // Release on the same target that received the original
     // `setPointerCapture` call — in R3F v9 this is the canvas
     // `Element` exposed as `e.target` on every `ThreeEvent`.
-    // R3F's `IntersectionEvent & Properties<PointerEvent>` narrows
-    // `target` to `EventTarget | null` (PointerEvent's own field
-    // type wins over R3F's `Element` annotation). We cast back to
-    // `Element` because R3F binds pointer events to the canvas at
-    // runtime, so the methods we need (`setPointerCapture`,
-    // `hasPointerCapture`, `releasePointerCapture`) are always available.
-    const targetEl = e.target as Element | null;
+    // Narrowed through the `asElement` helper above (which documents
+    // why TS sees `EventTarget | null` despite R3F v9's docs).
+    const targetEl = asElement(e.target);
     if (targetEl?.hasPointerCapture(e.pointerId)) {
       targetEl.releasePointerCapture(e.pointerId);
     }
@@ -197,9 +216,9 @@ export function useHardwareInteraction(
       // keep firing even after the cursor leaves the chassis mesh.
       // We also remember the pointerId so the window-fallback can
       // explicitly release capture in degenerate teardown paths.
-      // Cast to `Element | null` (see comment in onPointerUp for why
-      // TS sees `EventTarget | null` despite R3F v9's docs).
-      (e.target as Element | null)?.setPointerCapture(e.pointerId);
+      // Narrowed through the `asElement` helper above (see TSDoc for
+      // why TS sees `EventTarget | null` despite R3F v9's docs).
+      asElement(e.target)?.setPointerCapture(e.pointerId);
       capturedPointerIdRef.current = e.pointerId;
     },
 
