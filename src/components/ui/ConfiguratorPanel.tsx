@@ -7,7 +7,7 @@
  *
  * Design Language:
  * - Minimalist video-game/SaaS HUD matching richardzuikov.com
- *   (zinc-950/60 backdrop, razor-thin tech borders, font-mono readouts).
+ *   (zinc-950/80 backdrop, razor-thin tech borders, font-mono readouts).
  * - Fixed floating panels to prevent layout breaks on short viewports.
  * - Zen Mode: toggles sidebar visibility with transition-all duration-300.
  */
@@ -108,18 +108,17 @@ export function ConfiguratorPanel() {
   };
 
   return (
-    <div className="pointer-events-none font-mono text-zinc-300">
+    <div className="absolute inset-0 pointer-events-none font-mono text-zinc-300 z-10">
       
       {/* ----------------------------------------------------------------- */}
       {/* ZEN MODE TOGGLE (Top Center HUD Trigger)                          */}
       {/* ----------------------------------------------------------------- */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-auto z-50">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-4 z-50 pointer-events-auto">
         <button
-          type="button"
           onClick={() => setIsZen(!isZen)}
-          className="pointer-events-auto shadow-md border border-zinc-700/50 bg-zinc-900/90 z-50 flex items-center gap-2 px-3 py-1.5 hover:text-zinc-100 transition-all text-xs font-mono rounded-lg active:scale-95 backdrop-blur-md text-zinc-400 cursor-pointer"
+          className="px-4 py-2 border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-xs font-mono tracking-widest text-cyan-400 uppercase rounded cursor-pointer"
         >
-          <span>{isZen ? '[ SHOW UI ]' : '[ ZEN MODE ]'}</span>
+          {isZen ? '[ SHOW CONTROL PANEL ]' : '[ TOGGLE CONTROL PANEL ]'}
         </button>
       </div>
 
@@ -127,8 +126,8 @@ export function ConfiguratorPanel() {
       {/* LEFT SIDEBAR: Configurator, Mode, Specs, Hardware Catalog         */}
       {/* ----------------------------------------------------------------- */}
       <aside
-        className={`fixed top-4 left-4 bottom-4 w-96 flex flex-col border border-zinc-800/60 bg-zinc-950/60 backdrop-blur-md p-6 overflow-y-auto transition-all duration-300 rounded-lg ${
-          isZen ? 'opacity-0 -translate-x-12 pointer-events-none' : 'opacity-100 translate-x-0 pointer-events-auto'
+        className={`fixed top-4 left-4 bottom-4 w-96 flex flex-col border border-zinc-800/60 bg-zinc-950/80 backdrop-blur-md p-6 overflow-y-auto z-40 pointer-events-auto rounded-lg transition-all duration-300 ${
+          isZen ? 'opacity-0 -translate-x-12 pointer-events-none' : 'opacity-100 translate-x-0'
         }`}
       >
         {/* Header */}
@@ -223,7 +222,7 @@ export function ConfiguratorPanel() {
               <button
                 type="button"
                 onClick={() => addHardware('server', 1)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
               >
                 <svg className="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                   <rect x="2" y="5" width="20" height="6" rx="1" />
@@ -236,7 +235,7 @@ export function ConfiguratorPanel() {
               <button
                 type="button"
                 onClick={() => addHardware('server', 2)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
               >
                 <svg className="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                   <rect x="2" y="5" width="20" height="6" rx="1" />
@@ -249,7 +248,7 @@ export function ConfiguratorPanel() {
               <button
                 type="button"
                 onClick={() => addHardware('server', 4)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
               >
                 <svg className="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                   <rect x="2" y="2" width="20" height="20" rx="1" />
@@ -270,7 +269,7 @@ export function ConfiguratorPanel() {
               <button
                 type="button"
                 onClick={() => addHardware('switch', 1)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
               >
                 <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                   <rect x="2" y="6" width="20" height="12" rx="1" />
@@ -288,7 +287,7 @@ export function ConfiguratorPanel() {
               <button
                 type="button"
                 onClick={() => addHardware('router', 1)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
               >
                 <svg className="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                   <rect x="2" y="6" width="20" height="12" rx="1" />
@@ -302,7 +301,7 @@ export function ConfiguratorPanel() {
               <button
                 type="button"
                 onClick={() => addHardware('router', 2)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
               >
                 <svg className="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                   <rect x="2" y="4" width="20" height="16" rx="1" />
@@ -315,7 +314,7 @@ export function ConfiguratorPanel() {
               <button
                 type="button"
                 onClick={() => addHardware('patch-panel', 1)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
               >
                 <svg className="w-4 h-4 text-violet-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
                   <rect x="2" y="6" width="20" height="12" rx="1" />
@@ -342,8 +341,8 @@ export function ConfiguratorPanel() {
       {/* RIGHT SIDEBAR: Hardware Inventory & Sleek Inspector               */}
       {/* ----------------------------------------------------------------- */}
       <aside
-        className={`fixed top-4 right-4 bottom-4 w-80 flex flex-col border border-zinc-800/60 bg-zinc-950/60 backdrop-blur-md p-6 overflow-y-auto transition-all duration-300 rounded-lg ${
-          isZen ? 'opacity-0 translate-x-12 pointer-events-none' : 'opacity-100 translate-x-0 pointer-events-auto'
+        className={`fixed top-4 right-4 bottom-4 w-80 flex flex-col border border-zinc-800/60 bg-zinc-950/88 backdrop-blur-md p-6 overflow-y-auto z-40 pointer-events-auto rounded-lg transition-all duration-300 ${
+          isZen ? 'opacity-0 translate-x-12 pointer-events-none' : 'opacity-100 translate-x-0'
         }`}
       >
         {/* Header */}
@@ -384,7 +383,7 @@ export function ConfiguratorPanel() {
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-[10px] tracking-wider uppercase text-zinc-300 font-bold truncate pr-2">
+                    <span className="font-mono text-[10px] tracking-wider uppercase text-zinc-300 font-bold pr-2 truncate">
                       {h.type.replace('-', ' ')} <span className="text-zinc-500 font-normal">#{originalIndex + 1}</span>
                     </span>
                     <div className="flex items-center gap-1.5 shrink-0">
