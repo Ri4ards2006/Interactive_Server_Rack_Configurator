@@ -201,13 +201,16 @@ export function Scene() {
   const orbitRef = useRef<OrbitControlsImpl | null>(null);
 
   return (
-    <Canvas
-      shadows
-      dpr={[1, 2]}
-      camera={{ position: [1.5, 1.2, 1.5], fov: 50, near: 0.05 }}
-      gl={{ antialias: true, powerPreference: 'high-performance' }}
-    >
-      <SceneContents orbitRef={orbitRef} />
-    </Canvas>
+    <div className="absolute inset-0 w-full h-full min-h-screen z-0 overflow-hidden">
+      <Canvas
+        shadows
+        dpr={[1, 2]}
+        camera={{ position: [1.5, 1.2, 1.5], fov: 45, near: 0.05 }}
+        gl={{ antialias: true, powerPreference: 'high-performance' }}
+        style={{ width: '100vw', height: '100vh' }}
+      >
+        <SceneContents orbitRef={orbitRef} />
+      </Canvas>
+    </div>
   );
 }

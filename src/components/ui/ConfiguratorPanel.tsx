@@ -21,7 +21,7 @@ import type { HardwareProps, HardwareType } from '../../types/rack.types';
 import { checkDropValidity } from '../../utils/rackLayout';
 
 export function ConfiguratorPanel() {
-  const [isZenMode, setIsZenMode] = useState(false);
+  const [isZen, setIsZen] = useState(false);
 
   // Array → useShallow so a fresh reference but identical contents does
   // NOT re-render the panel.
@@ -115,13 +115,13 @@ export function ConfiguratorPanel() {
       {/* ----------------------------------------------------------------- */}
       {/* ZEN MODE TOGGLE (Top Center HUD Trigger)                          */}
       {/* ----------------------------------------------------------------- */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-auto">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-auto z-50">
         <button
           type="button"
-          onClick={() => setIsZenMode(!isZenMode)}
-          className="flex items-center gap-2 px-3 py-1.5 bg-zinc-950/80 border border-zinc-800/60 hover:border-zinc-500 hover:text-zinc-100 transition-all text-xs font-mono rounded-lg active:scale-95 shadow-lg backdrop-blur-md"
+          onClick={() => setIsZen(!isZen)}
+          className="pointer-events-auto shadow-md border border-zinc-700/50 bg-zinc-900/90 z-50 flex items-center gap-2 px-3 py-1.5 hover:text-zinc-100 transition-all text-xs font-mono rounded-lg active:scale-95 backdrop-blur-md text-zinc-400"
         >
-          <span>{isZenMode ? '[ SHOW UI ]' : '[ ZEN MODE ]'}</span>
+          <span>{isZen ? '[ SHOW UI ]' : '[ ZEN MODE ]'}</span>
         </button>
       </div>
 
@@ -130,7 +130,7 @@ export function ConfiguratorPanel() {
       {/* ----------------------------------------------------------------- */}
       <aside
         className={`w-[360px] max-h-full flex flex-col pointer-events-auto bg-zinc-950/60 backdrop-blur-md border border-zinc-800/60 rounded-lg overflow-y-auto transition-all duration-300 ${
-          isZenMode ? 'opacity-0 scale-98 pointer-events-none' : 'opacity-100 scale-100'
+          isZen ? 'opacity-0 pointer-events-none -translate-x-4' : 'opacity-100 translate-x-0'
         }`}
       >
         {/* Header */}
@@ -298,7 +298,7 @@ export function ConfiguratorPanel() {
       {/* ----------------------------------------------------------------- */}
       <aside
         className={`w-[320px] max-h-full flex flex-col pointer-events-auto bg-zinc-950/60 backdrop-blur-md border border-zinc-800/60 rounded-lg overflow-y-auto transition-all duration-300 ${
-          isZenMode ? 'opacity-0 scale-98 pointer-events-none' : 'opacity-100 scale-100'
+          isZen ? 'opacity-0 pointer-events-none translate-x-4' : 'opacity-100 translate-x-0'
         }`}
       >
         {/* Header */}
