@@ -17,6 +17,7 @@
  */
 
 import { useEffect } from 'react';
+import { createRoot } from 'react-dom/client';
 import { ConfiguratorPanel } from './components/ui/ConfiguratorPanel';
 import { Scene } from './components/canvas/Scene';
 import { useConfiguratorStore } from './store/useConfiguratorStore';
@@ -49,4 +50,11 @@ export function App() {
       <ConfiguratorPanel />
     </div>
   );
+}
+
+// Mount logic for browser entry
+const container = document.getElementById('root');
+if (container) {
+  const root = createRoot(container);
+  root.render(<App />);
 }

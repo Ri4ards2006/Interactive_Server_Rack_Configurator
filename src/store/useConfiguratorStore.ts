@@ -98,7 +98,16 @@ const generateId = (): string =>
 
 export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
   capacity: 42,
-  installedHardware: [],
+  installedHardware: [
+    {
+      id: "default-chassis-1",
+      type: "server",
+      rackUnits: 2,
+      powerDraw: 250,
+      depth: 0.6,
+      position: [0, 0.04445, 0], // Centered perfectly on slot 0 floor
+    },
+  ],
   selectedHardwareId: null,
   viewMode: '3D',
 
