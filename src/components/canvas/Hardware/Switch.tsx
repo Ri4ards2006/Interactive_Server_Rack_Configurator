@@ -6,8 +6,9 @@
  *
  * Visual signature
  * ----------------
- * 3D mode (default): dark chassis + thin cyan accent stripe at the top
- * of the bezel (reads as an enterprise 48-port 1U switch).
+ * 3D mode (default): brushed metal body + thin cyan accent stripe at the top
+ * of the bezel (reads as an enterprise 48-port 1U switch). RJ45 ports use
+ * nested box geometries (outer metallic jack + inner black socket hole).
  *
  * Blueprint mode: flat fills, sharp cyan wireframe edges on chassis
  * + bezel + accent stripe. Ports become solid flat boxes (no per-
@@ -17,18 +18,13 @@
  *
  * Implementation
  * --------------
- * - The port grid AND the LEDs both use `<instancedMesh>` so a 48-port
- *   switch costs ~2 draw calls instead of ~96. Per-instance LED color
- *   is set via `setColorAt` using `MeshBasicMaterial` with
- *   `toneMapped: false` — gives "self-illuminated" LEDs without any
- *   lights or emissive-shader gymnastics.
+ * - Overrides store-default depth to enforce a 1U (1 * RACK_UNIT_HEIGHT),
+ *   shallow (0.3m) form factor.
+ * - The port grid, port holes, and the LEDs use `<instancedMesh>` so a 48-port
+ *   switch costs minimal draw calls.
  * - Every material is module-scoped (allocated once at import time).
- *   The instance matrices / colors are seeded in `useLayoutEffect` so
- *   the chassis never renders at the origin frame on mount.
  * - Drag / select / cursor / window-release logic is delegated to
- *   `useHardwareInteraction`. The selection halo is the shared
- *   `<SelectionOutline />` component so its size + material stay in
- *   lockstep with the other three chassis types.
+ *   `useHardwareInteraction`.
  */
 
 import { useLayoutEffect, useRef } from 'react';
@@ -58,17 +54,21 @@ const PORT_GAP_Y = 0.008;
 const ACCENT_STRIPE_HEIGHT = 0.002;
 const ACCENT_STRIPE_WIDTH = 0.5;
 
+// Nested RJ45 inner hole dimensions
+const PORT_HOLE_W = PORT_W - 0.004; // 0.010m
+const PORT_HOLE_H = PORT_H - 0.004; // 0.004m
+
 // ---- Hoisted materials (allocated once at import time) ---------------
 const chassisMaterial = new THREE.MeshStandardMaterial({
-  color: '#1a1a1c',
-  metalness: 0.7,
-  roughness: 0.45,
+  color: '#2a2b30', // brushed dark steel color
+  metalness: 0.9,    // highly metallic for brushed metal
+  roughness: 0.35,   // medium-low roughness for reflection
 });
 
 const bezelMaterial = new THREE.MeshStandardMaterial({
-  color: '#050505',
-  metalness: 0.4,
-  roughness: 0.25,
+  color: '#08080a',
+  metalness: 0.3,
+  roughness: 0.4,
 });
 
 const accentMaterial = new THREE.MeshStandardMaterial({
@@ -80,9 +80,13 @@ const accentMaterial = new THREE.MeshStandardMaterial({
 });
 
 const portMaterial = new THREE.MeshStandardMaterial({
-  color: '#9ca3af', // zinc-400 — typical RJ45 housing
-  metalness: 0.85,
+  color: '#8b8e96', // silver-grey steel jack housing
+  metalness: 0.8,
   roughness: 0.3,
+});
+
+const portHoleMaterial = new THREE.MeshBasicMaterial({
+  color: '#020202', // deep black hole
 });
 
 // MeshBasicMaterial lets `instanceColor` drive each LED's hue directly.
@@ -95,9 +99,7 @@ const ledMaterial = new THREE.MeshBasicMaterial({
 });
 
 // Blueprint-mode replacements. Module-scoped so we don't allocate on
-// every render. LED material is shared between modes (the per-instance
-// color already produces a "self-illuminated" look without needing
-// toneMapping).
+// every render.
 const blueprintPortMaterial = new THREE.MeshBasicMaterial({
   color: '#e5e7eb', // light gray — pops against the dark chassis fill
 });
@@ -112,44 +114,37 @@ interface SwitchProps {
 
 export function Switch({ hardware }: SwitchProps) {
   const portRef = useRef<THREE.InstancedMesh>(null);
+  const portHoleRef = useRef<THREE.InstancedMesh>(null);
   const ledRef = useRef<THREE.InstancedMesh>(null);
 
-  const interaction = useHardwareInteraction(hardware);
+  // Enforce switch-specific invariants (1U height and 0.3m shallow depth)
+  const SWITCH_RACK_UNITS = 1;
+  const DEPTH = 0.3;
+
+  const interaction = useHardwareInteraction({
+    ...hardware,
+    rackUnits: SWITCH_RACK_UNITS,
+    depth: DEPTH,
+  });
+
   const isBlueprint = useIsBlueprint();
 
   // Chassis height = U × rackUnits minus the shared edge gap.
-  const chassisHeight = hardware.rackUnits * RACK_UNIT_HEIGHT - EDGE_GAP;
+  const chassisHeight = SWITCH_RACK_UNITS * RACK_UNIT_HEIGHT - EDGE_GAP;
 
-  // Tile the port rows vertically to fit whatever rackUnits the user
-  // picked; a 1U chassis comfortably fits 2 rows. Recomputed every
-  // render so a future rackUnits change re-seeds the instanced meshes
-  // via the useLayoutEffect below.
-  const portRows = Math.max(
-    1,
-    Math.floor(
-      (chassisHeight - ACCENT_STRIPE_HEIGHT - 0.004) /
-        (PORT_H + PORT_GAP_Y),
-    ),
-  );
-
+  const portRows = 2; // Fixed Comfortably for 1U
   const totalPorts = portRows * PORT_COLS;
 
   // Total horizontal span of the grid (used to center it on the bezel).
-  const totalGridW =
-    PORT_COLS * PORT_W + (PORT_COLS - 1) * PORT_GAP_X;
-  const totalGridH =
-    portRows * PORT_H + (portRows - 1) * PORT_GAP_Y;
+  const totalGridW = PORT_COLS * PORT_W + (PORT_COLS - 1) * PORT_GAP_X;
+  const totalGridH = portRows * PORT_H + (portRows - 1) * PORT_GAP_Y;
 
   // Origin of the first port (top-left of grid). Centered horizontally,
   // sits in the lower portion of the bezel (top reserved for the accent).
   const startX = -totalGridW / 2 + PORT_W / 2;
-  const startY =
-    -totalGridH / 2 +
-    PORT_H / 2 -
-    ACCENT_STRIPE_HEIGHT / 2 -
-    0.001;
+  const startY = -totalGridH / 2 + PORT_H / 2 - ACCENT_STRIPE_HEIGHT / 2 - 0.001;
 
-  const portDepthOffset = hardware.depth / 2 + 0.002;
+  const portDepthOffset = DEPTH / 2 + 0.002;
   const ledXOffset = PORT_W / 2 + 0.005;
 
   // -- Seed RJ45 port instances ---------------------------------------
@@ -174,13 +169,33 @@ export function Switch({ hardware }: SwitchProps) {
     mesh.count = totalPorts;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [startX, startY, portDepthOffset, totalPorts, portRows, hardware.depth]);
+  }, [startX, startY, portDepthOffset, totalPorts, portRows]);
+
+  // -- Seed RJ45 port holes (nested details) --------------------------
+  useLayoutEffect(() => {
+    const mesh = portHoleRef.current;
+    if (!mesh || isBlueprint) return;
+    const dummy = new THREE.Object3D();
+    let i = 0;
+    for (let r = 0; r < portRows; r++) {
+      for (let c = 0; c < PORT_COLS; c++) {
+        dummy.position.set(
+          startX + c * (PORT_W + PORT_GAP_X),
+          startY + r * (PORT_H + PORT_GAP_Y),
+          portDepthOffset + 0.0002, // slightly forward so it sits on the face
+        );
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, 1, 1);
+        dummy.updateMatrix();
+        mesh.setMatrixAt(i++, dummy.matrix);
+      }
+    }
+    mesh.count = totalPorts;
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [startX, startY, portDepthOffset, totalPorts, portRows, isBlueprint]);
 
   // -- Seed LED instances (with per-instance colour) -------------------
-  // Deterministic per-index: every 5th column is amber (10G uplink
-  // convention), the rest are green link-up. This gives a stable,
-  // reproducible pattern that visibly differs from the second Switch
-  // installed next to it.
   useLayoutEffect(() => {
     const mesh = ledRef.current;
     if (!mesh) return;
@@ -204,7 +219,7 @@ export function Switch({ hardware }: SwitchProps) {
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [startX, startY, portDepthOffset, totalPorts, portRows, hardware.depth]);
+  }, [startX, startY, portDepthOffset, totalPorts, portRows]);
 
   return (
     <group
@@ -222,19 +237,19 @@ export function Switch({ hardware }: SwitchProps) {
         receiveShadow={!isBlueprint}
         material={isBlueprint ? blueprintChassisMaterial : chassisMaterial}
       >
-        <boxGeometry args={[CHASSIS_WIDTH, chassisHeight, hardware.depth]} />
+        <boxGeometry args={[CHASSIS_WIDTH, chassisHeight, DEPTH]} />
       </mesh>
       {isBlueprint && (
         <SchematicBox
           width={CHASSIS_WIDTH}
           height={chassisHeight}
-          depth={hardware.depth}
+          depth={DEPTH}
         />
       )}
 
       {/* Front bezel — slightly inset, very dark */}
       <mesh
-        position={[0, 0, hardware.depth / 2 + 0.0015]}
+        position={[0, 0, DEPTH / 2 + 0.0015]}
         material={isBlueprint ? blueprintBezelMaterial : bezelMaterial}
       >
         <boxGeometry args={[CHASSIS_WIDTH - 0.02, chassisHeight, 0.003]} />
@@ -252,7 +267,7 @@ export function Switch({ hardware }: SwitchProps) {
         position={[
           0,
           chassisHeight / 2 - ACCENT_STRIPE_HEIGHT - 0.001,
-          hardware.depth / 2 + 0.002,
+          DEPTH / 2 + 0.002,
         ]}
         material={isBlueprint ? blueprintAccentMaterial : accentMaterial}
       >
@@ -268,7 +283,7 @@ export function Switch({ hardware }: SwitchProps) {
         />
       )}
 
-      {/* RJ45 ports (instanced — 1 draw call) */}
+      {/* RJ45 port housings (instanced — 1 draw call) */}
       <instancedMesh
         ref={portRef}
         args={[undefined, undefined, totalPorts]}
@@ -277,6 +292,17 @@ export function Switch({ hardware }: SwitchProps) {
       >
         <boxGeometry args={[PORT_W, PORT_H, 0.003]} />
       </instancedMesh>
+
+      {/* Nested RJ45 port hole inlays (only rendered in 3D mode) */}
+      {!isBlueprint && (
+        <instancedMesh
+          ref={portHoleRef}
+          args={[undefined, undefined, totalPorts]}
+          material={portHoleMaterial}
+        >
+          <boxGeometry args={[PORT_HOLE_W, PORT_HOLE_H, 0.0032]} />
+        </instancedMesh>
+      )}
 
       {/* Per-port status LEDs (instanced, per-instance colour) */}
       <instancedMesh
@@ -290,8 +316,8 @@ export function Switch({ hardware }: SwitchProps) {
       {/* Shared selection halo */}
       {interaction.isSelected && (
         <SelectionOutline
-          rackUnits={hardware.rackUnits}
-          depth={hardware.depth}
+          rackUnits={SWITCH_RACK_UNITS}
+          depth={DEPTH}
         />
       )}
     </group>

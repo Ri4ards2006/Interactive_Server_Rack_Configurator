@@ -3,28 +3,25 @@
  *
  * Passive punch-down patch panel: a tight, high-density row (or grid)
  * of keystone port housings spanning the front bezel. No LEDs — this
- * is purely passive infrastructure so a connected-but-not-linked panel
- * is still visually distinct from an active switch.
+ * is purely passive infrastructure.
  *
  * Visual signature
  * ----------------
- * 3D mode (default): no accent stripe, slightly lighter chassis than
- * the others, and a port form factor slightly larger than RJ45
- * (keystone jacks are a hair wider/taller than standard RJ45 sockets).
+ * 3D mode (default): no accent stripe, dark passive chassis, and a dense
+ * grid of small black squares representing keystones/ports on the front face.
  *
  * Blueprint mode: flat fills + sharp cyan wireframe edges on chassis
- * and bezel. Keystone ports become solid light-gray boxes (no
- * per-instance edges — would be visually noisy at 24-port rows).
+ * and bezel. Keystone ports swap to a flat basic representation (no
+ * per-instance edges to keep it clean and clear).
  *
  * Implementation
  * --------------
- * - Single `<instancedMesh>` for the entire port grid. Single shared
- *   material; no per-instance colour. This is the cheapest of the
- *   three hardware types — no LEDs at all.
+ * - Enforces a 1U height and an ultra-short depth (0.1m) by overriding
+ *   depth and rackUnits in the interaction hook.
+ * - Single `<instancedMesh>` for the entire port grid.
  * - Drag / select / cursor / window-release logic is delegated to
  *   `useHardwareInteraction`. The selection halo is the shared
- *   `<SelectionOutline />` component so it stays in lockstep with
- *   the other three chassis types.
+ *   `<SelectionOutline />` component.
  */
 
 import { useLayoutEffect, useRef } from 'react';
@@ -45,38 +42,37 @@ import {
 } from './shared';
 
 // ---- PatchPanel-specific geometry constants -------------------------
-// Keystone jacks are a touch larger than RJ45 sockets.
-const PORT_COLS = 24;                         // wide rows of keystone ports
-const PORT_W = 0.024;
-const PORT_H = 0.014;
-const PORT_GAP_X = 0.006;
+// Keystone jacks are modeled as square blocks.
+const PORT_COLS = 24;                         // 24 ports per row
+const PORT_W = 0.016;
+const PORT_H = 0.016;
+const PORT_GAP_X = 0.012;
 const PORT_GAP_Y = 0.010;
 const PORT_INSET_DEPTH = 0.003;               // how far the jack sits proud of the bezel
 
 // ---- Hoisted materials (allocated once at import time) ---------------
 const chassisMaterial = new THREE.MeshStandardMaterial({
-  color: '#0f0f10',                          // very dark matte — passive hardware
-  metalness: 0.6,
-  roughness: 0.55,
+  color: '#0e0e10',                          // very dark matte — passive hardware
+  metalness: 0.5,
+  roughness: 0.6,
 });
 
 const bezelMaterial = new THREE.MeshStandardMaterial({
-  color: '#050505',
-  metalness: 0.4,
-  roughness: 0.3,
+  color: '#040405',
+  metalness: 0.3,
+  roughness: 0.45,
 });
 
-// Keystone housing is plastic — light, slightly off-white.
+// Keystone ports are small black squares.
 const portMaterial = new THREE.MeshStandardMaterial({
-  color: '#e5e7eb',
-  metalness: 0.4,
-  roughness: 0.55,
+  color: '#08080a', // black plastic port housings
+  metalness: 0.1,
+  roughness: 0.8,
 });
 
 // Blueprint-mode replacement material for the keystone port grid.
-// Module-scoped so the conditional swap is a reference assignment.
 const blueprintPortMaterial = new THREE.MeshBasicMaterial({
-  color: '#94a3b8', // slate-400 — pops against the dark chassis fill
+  color: '#151518', // flat dark representation
 });
 
 interface PatchPanelProps {
@@ -85,27 +81,31 @@ interface PatchPanelProps {
 
 export function PatchPanel({ hardware }: PatchPanelProps) {
   const portRef = useRef<THREE.InstancedMesh>(null);
-  void portRef; // keep TS happy if unused
 
-  const interaction = useHardwareInteraction(hardware);
+  // Enforce patch panel invariants (1U height and 0.1m ultra-short depth)
+  const PATCH_PANEL_RACK_UNITS = 1;
+  const DEPTH = 0.1;
+
+  const interaction = useHardwareInteraction({
+    ...hardware,
+    rackUnits: PATCH_PANEL_RACK_UNITS,
+    depth: DEPTH,
+  });
+
   const isBlueprint = useIsBlueprint();
 
-  const chassisHeight = hardware.rackUnits * RACK_UNIT_HEIGHT - EDGE_GAP;
+  const chassisHeight = PATCH_PANEL_RACK_UNITS * RACK_UNIT_HEIGHT - EDGE_GAP;
 
-  // Tile the keystone rows vertically to fill whatever chassisHeight we have.
-  const portRows = Math.max(
-    1,
-    Math.floor((chassisHeight - 0.006) / (PORT_H + PORT_GAP_Y)),
-  );
-
+  // Single row for a standard 1U panel.
+  const portRows = 1;
   const totalPorts = portRows * PORT_COLS;
   const totalGridW = PORT_COLS * PORT_W + (PORT_COLS - 1) * PORT_GAP_X;
   const totalGridH = portRows * PORT_H + (portRows - 1) * PORT_GAP_Y;
 
   const startX = -totalGridW / 2 + PORT_W / 2;
-  const startY = -totalGridH / 2 + PORT_H / 2;
+  const startY = 0; // centered vertically on the 1U face
 
-  const portDepthOffset = hardware.depth / 2 + 0.002;
+  const portDepthOffset = DEPTH / 2 + 0.002;
 
   useLayoutEffect(() => {
     const mesh = portRef.current;
@@ -128,7 +128,7 @@ export function PatchPanel({ hardware }: PatchPanelProps) {
     mesh.count = totalPorts;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [startX, startY, portDepthOffset, totalPorts, portRows, hardware.depth]);
+  }, [startX, startY, portDepthOffset, totalPorts, portRows]);
 
   return (
     <group
@@ -146,19 +146,19 @@ export function PatchPanel({ hardware }: PatchPanelProps) {
         receiveShadow={!isBlueprint}
         material={isBlueprint ? blueprintChassisMaterial : chassisMaterial}
       >
-        <boxGeometry args={[CHASSIS_WIDTH, chassisHeight, hardware.depth]} />
+        <boxGeometry args={[CHASSIS_WIDTH, chassisHeight, DEPTH]} />
       </mesh>
       {isBlueprint && (
         <SchematicBox
           width={CHASSIS_WIDTH}
           height={chassisHeight}
-          depth={hardware.depth}
+          depth={DEPTH}
         />
       )}
 
       {/* Front bezel — slightly inset, very dark */}
       <mesh
-        position={[0, 0, hardware.depth / 2 + 0.0015]}
+        position={[0, 0, DEPTH / 2 + 0.0015]}
         material={isBlueprint ? blueprintBezelMaterial : bezelMaterial}
       >
         <boxGeometry args={[CHASSIS_WIDTH - 0.02, chassisHeight, 0.003]} />
@@ -184,8 +184,8 @@ export function PatchPanel({ hardware }: PatchPanelProps) {
       {/* Shared selection halo */}
       {interaction.isSelected && (
         <SelectionOutline
-          rackUnits={hardware.rackUnits}
-          depth={hardware.depth}
+          rackUnits={PATCH_PANEL_RACK_UNITS}
+          depth={DEPTH}
         />
       )}
     </group>

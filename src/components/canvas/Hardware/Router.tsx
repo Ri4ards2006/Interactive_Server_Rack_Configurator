@@ -8,27 +8,20 @@
  *
  * Visual signature
  * ----------------
- * - 3D mode (default): amber accent stripe at the top (heavier
- *   industrial look than the switch's cyan), PSUs around the left
- *   third, vent bars in the centre, SFP+ cages on the right.
+ * - 3D mode (default): amber accent stripe at the top, PSUs around the left
+ *   third, vent bars in the centre, SFP+ cages on the right. Status LEDs
+ *   are rendered as small spheres (self-illuminating).
  * - Blueprint mode: flat fills, sharp cyan wireframe edges on every
  *   single-mesh element. Instanced grids (vent bars, SFP cages,
- *   status LEDs) become solid flat boxes without per-instance edges
+ *   status LEDs) become solid flat boxes/shapes without per-instance edges
  *   so the schematic stays readable.
  *
  * Implementation
  * --------------
- * - PSU outlines + accent stripe are individual meshes (only a
- *   handful, no instancing needed).
- * - Vent bars + SFP cages + LEDs use `<instancedMesh>` for cheap
- *   batching. Vent bars share a single material (uniform black);
- *   SFP cages share a single material (silver); status LEDs use
- *   `instanceColor` for per-instance hue via `MeshBasicMaterial`
- *   (`toneMapped: false` so they read as self-illuminated).
- * - Drag / select / cursor / window-release logic is delegated to
- *   `useHardwareInteraction`. The selection halo is the shared
- *   `<SelectionOutline />` component so it stays in lockstep with
- *   the other three chassis types.
+ * - Accepts a `rackUnits` prop (default 1U) which overrides the default configuration.
+ * - Enforces a medium depth (0.4m) using object override when binding interaction.
+ * - Status LEDs use `<sphereGeometry>` and `instanceColor` for self-illuminated looks.
+ * - Drag / select / cursor / window-release logic is delegated to `useHardwareInteraction`.
  */
 
 import { useLayoutEffect, useRef } from 'react';
@@ -141,17 +134,26 @@ const LED_RED = new THREE.Color('#ef4444');
 
 interface RouterProps {
   hardware: HardwareProps;
+  rackUnits?: number;
 }
 
-export function Router({ hardware }: RouterProps) {
+export function Router({ hardware, rackUnits = 1 }: RouterProps) {
   const ventRef = useRef<THREE.InstancedMesh>(null);
   const sfpRef = useRef<THREE.InstancedMesh>(null);
   const ledRef = useRef<THREE.InstancedMesh>(null);
 
-  const interaction = useHardwareInteraction(hardware);
+  // Enforce router-specific invariants (U height and 0.4m medium depth)
+  const finalRackUnits = hardware.rackUnits ?? rackUnits;
+  const DEPTH = 0.4;
+
+  const interaction = useHardwareInteraction({
+    ...hardware,
+    rackUnits: finalRackUnits,
+    depth: DEPTH,
+  });
   const isBlueprint = useIsBlueprint();
 
-  const chassisHeight = hardware.rackUnits * RACK_UNIT_HEIGHT - EDGE_GAP;
+  const chassisHeight = finalRackUnits * RACK_UNIT_HEIGHT - EDGE_GAP;
 
   // PSU area sits in the left ~third of the bezel.
   const psuAreaLeftX = -CHASSIS_WIDTH / 2 + 0.03;
@@ -170,20 +172,14 @@ export function Router({ hardware }: RouterProps) {
         (SFP_H + SFP_GAP_Y),
     ),
   );
-  const totalSfpGridW =
-    SFP_COLS * SFP_W + (SFP_COLS - 1) * SFP_GAP_X;
-  const totalSfpGridH =
-    sfpRows * SFP_H + (sfpRows - 1) * SFP_GAP_Y;
-  const sfpStartX =
-    CHASSIS_WIDTH / 2 - 0.03 - totalSfpGridW + SFP_W / 2;
+  const totalSfpGridW = SFP_COLS * SFP_W + (SFP_COLS - 1) * SFP_GAP_X;
+  const totalSfpGridH = sfpRows * SFP_H + (sfpRows - 1) * SFP_GAP_Y;
+  const sfpStartX = CHASSIS_WIDTH / 2 - 0.03 - totalSfpGridW + SFP_W / 2;
   // Sink SFP down so the status LEDs (above) have room.
-  const sfpStartY =
-    -chassisHeight / 2 +
-    totalSfpGridH / 2 +
-    0.012;
+  const sfpStartY = -chassisHeight / 2 + totalSfpGridH / 2 + 0.012;
 
-  const bezelDepthOffset = hardware.depth / 2 + 0.0015;
-  const portDepthOffset = hardware.depth / 2 + 0.003;
+  const bezelDepthOffset = DEPTH / 2 + 0.0015;
+  const portDepthOffset = DEPTH / 2 + 0.003;
 
   const totalSfps = sfpRows * SFP_COLS;
 
@@ -192,8 +188,7 @@ export function Router({ hardware }: RouterProps) {
     const mesh = ventRef.current;
     if (!mesh) return;
     const dummy = new THREE.Object3D();
-    const ventStartX =
-      ventSectionLeftX - VENT_SECTION_WIDTH / 2 + VENT_BAR_WIDTH / 2;
+    const ventStartX = ventSectionLeftX - VENT_SECTION_WIDTH / 2 + VENT_BAR_WIDTH / 2;
     for (let i = 0; i < VENT_BAR_COUNT; i++) {
       dummy.position.set(
         ventStartX + i * (VENT_BAR_WIDTH + VENT_BAR_GAP),
@@ -207,7 +202,7 @@ export function Router({ hardware }: RouterProps) {
     mesh.count = VENT_BAR_COUNT;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [ventSectionLeftX, portDepthOffset, hardware.depth]);
+  }, [ventSectionLeftX, portDepthOffset]);
 
   // -- SFP+ cages ------------------------------------------------------
   useLayoutEffect(() => {
@@ -230,15 +225,14 @@ export function Router({ hardware }: RouterProps) {
     mesh.count = totalSfps;
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [sfpStartX, sfpStartY, portDepthOffset, totalSfps, sfpRows, hardware.depth]);
+  }, [sfpStartX, sfpStartY, portDepthOffset, totalSfps, sfpRows]);
 
   // -- Status LEDs (per-instance hue via instanceColor) ----------------
   useLayoutEffect(() => {
     const mesh = ledRef.current;
     if (!mesh) return;
     const dummy = new THREE.Object3D();
-    const ledsStartX =
-      sfpStartX + SFP_W / 2 - 0.005;
+    const ledsStartX = sfpStartX + SFP_W / 2 - 0.005;
     const ledY = sfpStartY + totalSfpGridH / 2 + 0.006;
     for (let i = 0; i < STATUS_LED_COUNT; i++) {
       dummy.position.set(
@@ -249,15 +243,13 @@ export function Router({ hardware }: RouterProps) {
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       mesh.setMatrixAt(i, dummy.matrix);
-      // Index 2 is "alarm" — red; the other three are status / fan /
-      // activity — green.
       mesh.setColorAt(i, i === 2 ? LED_RED : LED_GREEN);
     }
     mesh.count = STATUS_LED_COUNT;
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.computeBoundingSphere();
-  }, [sfpStartX, sfpStartY, portDepthOffset, hardware.depth]);
+  }, [sfpStartX, sfpStartY, portDepthOffset, totalSfpGridH]);
 
   // PSU rectangles are sized to chassis height minus a top + bottom margin.
   const psuHeight = chassisHeight - 2 * PSU_TOP_MARGIN;
@@ -279,13 +271,13 @@ export function Router({ hardware }: RouterProps) {
         receiveShadow={!isBlueprint}
         material={isBlueprint ? blueprintChassisMaterial : chassisMaterial}
       >
-        <boxGeometry args={[CHASSIS_WIDTH, chassisHeight, hardware.depth]} />
+        <boxGeometry args={[CHASSIS_WIDTH, chassisHeight, DEPTH]} />
       </mesh>
       {isBlueprint && (
         <SchematicBox
           width={CHASSIS_WIDTH}
           height={chassisHeight}
-          depth={hardware.depth}
+          depth={DEPTH}
         />
       )}
 
@@ -373,13 +365,13 @@ export function Router({ hardware }: RouterProps) {
         <boxGeometry args={[SFP_W, SFP_H, 0.003]} />
       </instancedMesh>
 
-      {/* Status LEDs (instanced, per-instance colour) */}
+      {/* Status LEDs (instanced, small sphere geometries as requested) */}
       <instancedMesh
         ref={ledRef}
         args={[undefined, undefined, STATUS_LED_COUNT]}
         material={ledMaterial}
       >
-        <boxGeometry args={[0.005, 0.005, 0.001]} />
+        <sphereGeometry args={[0.003, 16, 16]} />
       </instancedMesh>
 
       {/* PSU label slits — two thin dark cuts to read as PSU identity */}
@@ -399,8 +391,8 @@ export function Router({ hardware }: RouterProps) {
       {/* Shared selection halo */}
       {interaction.isSelected && (
         <SelectionOutline
-          rackUnits={hardware.rackUnits}
-          depth={hardware.depth}
+          rackUnits={finalRackUnits}
+          depth={DEPTH}
         />
       )}
     </group>

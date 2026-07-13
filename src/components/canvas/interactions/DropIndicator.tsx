@@ -45,17 +45,20 @@ import {
 // Module-scoped materials — allocated once at import time, never
 // recreated inside the render loop. Both materials share `depthWrite:
 // false` so they don't occlude underlying hardware / rack geometry.
+// `wireframe: true` is set as requested for the drag-ghost box look.
 const validMaterial = new THREE.MeshBasicMaterial({
   color: '#10b981', // emerald-500
+  wireframe: true,
   transparent: true,
-  opacity: 0.28,
+  opacity: 0.6,
   depthWrite: false,
 });
 
 const invalidMaterial = new THREE.MeshBasicMaterial({
   color: '#ef4444', // red-500
+  wireframe: true,
   transparent: true,
-  opacity: 0.35,
+  opacity: 0.6,
   depthWrite: false,
 });
 
