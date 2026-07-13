@@ -29,6 +29,9 @@ import { UPS } from './Hardware/UPS';
 import { KVMConsole } from './Hardware/KVMConsole';
 import { JBOD } from './Hardware/JBOD';
 import { BlankingPanel } from './Hardware/BlankingPanel';
+import { NAS } from './Hardware/NAS';
+import { Firewall } from './Hardware/Firewall';
+import { BrushPanel } from './Hardware/BrushPanel';
 
 export function HardwareMapper() {
   const installedHardware = useConfiguratorStore(
@@ -55,6 +58,12 @@ export function HardwareMapper() {
             return <JBOD key={h.id} hardware={h} />;
           case 'blank':
             return <BlankingPanel key={h.id} hardware={h} />;
+          case 'nas':
+            return <NAS key={h.id} hardware={h} />;
+          case 'firewall':
+            return <Firewall key={h.id} hardware={h} />;
+          case 'brush':
+            return <BrushPanel key={h.id} hardware={h} />;
           default: {
             // Exhaustiveness guard — TS narrows `h.type` to `never` here
             // so adding a new HardwareType without updating this switch

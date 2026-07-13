@@ -37,6 +37,10 @@ export function ConfiguratorPanel() {
   const selectedHardwareId = useConfiguratorStore((s) => s.selectedHardwareId);
   const selectHardware = useConfiguratorStore((s) => s.selectHardware);
   const updateHardwarePosition = useConfiguratorStore((s) => s.updateHardwarePosition);
+  const rackType = useConfiguratorStore((s) => s.rackType);
+  const isDoorOpen = useConfiguratorStore((s) => s.isDoorOpen);
+  const setRackType = useConfiguratorStore((s) => s.setRackType);
+  const setDoorOpen = useConfiguratorStore((s) => s.setDoorOpen);
 
   // Derived states
   const { usedUnits, totalPowerDraw } = useMemo(() => {
@@ -175,6 +179,57 @@ export function ConfiguratorPanel() {
               BLUEPRINT
             </button>
           </div>
+        </div>
+
+        {/* Rack Type Selector */}
+        <div className="py-4 border-b border-zinc-800/60 flex flex-col gap-2">
+          <label className="text-[9px] uppercase tracking-wider text-zinc-500">
+            [ RACK_TYPE ]
+          </label>
+          <div className="grid grid-cols-3 p-0.5 bg-zinc-950 rounded border border-zinc-800/60">
+            <button
+              type="button"
+              onClick={() => setRackType('2-post')}
+              className={`py-1 text-center text-[10px] font-mono rounded transition-all focus:outline-none cursor-pointer ${
+                rackType === '2-post'
+                  ? 'bg-zinc-850 text-zinc-100 border border-zinc-700/50 shadow-sm'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              2-POST
+            </button>
+            <button
+              type="button"
+              onClick={() => setRackType('4-post')}
+              className={`py-1 text-center text-[10px] font-mono rounded transition-all focus:outline-none cursor-pointer ${
+                rackType === '4-post'
+                  ? 'bg-zinc-850 text-zinc-100 border border-zinc-700/50 shadow-sm'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              4-POST
+            </button>
+            <button
+              type="button"
+              onClick={() => setRackType('cabinet')}
+              className={`py-1 text-center text-[10px] font-mono rounded transition-all focus:outline-none cursor-pointer ${
+                rackType === 'cabinet'
+                  ? 'bg-zinc-850 text-zinc-100 border border-zinc-700/50 shadow-sm'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              CABINET
+            </button>
+          </div>
+          {rackType === 'cabinet' && (
+            <button
+              type="button"
+              onClick={() => setDoorOpen(!isDoorOpen)}
+              className="mt-2 py-1.5 px-3 text-center font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
+            >
+              {isDoorOpen ? '[ CLOSE DOOR ]' : '[ OPEN DOOR ]'}
+            </button>
+          )}
         </div>
 
         {/* Stats */}
@@ -327,6 +382,20 @@ export function ConfiguratorPanel() {
                 </svg>
                 <span>CABLE-MNG.P 1U</span>
               </button>
+              <button
+                type="button"
+                onClick={() => addHardware('firewall', 1)}
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
+              >
+                <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="6" width="20" height="12" rx="1" />
+                  <circle cx="6" cy="12" r="1.5" />
+                  <line x1="10" y1="10" x2="12" y2="10" />
+                  <line x1="10" y1="14" x2="12" y2="14" />
+                  <rect x="15" y="9" width="4" height="6" />
+                </svg>
+                <span>FIREWALL APPLIANCE 1U</span>
+              </button>
             </div>
           </div>
 
@@ -385,6 +454,19 @@ export function ConfiguratorPanel() {
                 </svg>
                 <span>JBOD STORAGE 4U</span>
               </button>
+              <button
+                type="button"
+                onClick={() => addHardware('nas', 2)}
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
+              >
+                <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="4" width="20" height="16" rx="1" />
+                  <rect x="5" y="8" width="6" height="8" />
+                  <circle cx="16" cy="10" r="1" />
+                  <circle cx="18" cy="10" r="1" />
+                </svg>
+                <span>NAS STORAGE 2U</span>
+              </button>
             </div>
           </div>
 
@@ -416,6 +498,17 @@ export function ConfiguratorPanel() {
                   <line x1="18" y1="12" x2="20" y2="12" />
                 </svg>
                 <span>BLANKING PANEL 2U</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => addHardware('brush', 1)}
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
+              >
+                <svg className="w-4 h-4 text-zinc-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="6" width="20" height="12" rx="1" />
+                  <line x1="4" y1="12" x2="20" y2="12" strokeDasharray="2, 2" />
+                </svg>
+                <span>CABLE BRUSH PANEL 1U</span>
               </button>
             </div>
           </div>

@@ -19,7 +19,10 @@ export type HardwareType =
   | 'ups'
   | 'kvm'
   | 'jbod'
-  | 'blank';
+  | 'blank'
+  | 'nas'
+  | 'firewall'
+  | 'brush';
 
 /** Convenience alias for a 3D position tuple used everywhere in the scene. */
 export type Vec3 = [number, number, number];

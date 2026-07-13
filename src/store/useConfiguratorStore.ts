@@ -85,6 +85,18 @@ export interface ConfiguratorState extends RackState {
    * materials for the schematic palette.
    */
   toggleViewMode: () => void;
+
+  /** The type of rack frame: 2-post, 4-post open frame, or enclosed cabinet. */
+  rackType: '2-post' | '4-post' | 'cabinet';
+
+  /** Whether the cabinet's front glass door is open (applicable to 'cabinet' type). */
+  isDoorOpen: boolean;
+
+  /** Set the active rack type. */
+  setRackType: (type: '2-post' | '4-post' | 'cabinet') => void;
+
+  /** Set whether the cabinet door is open. */
+  setDoorOpen: (isOpen: boolean) => void;
 }
 
 /**
@@ -155,6 +167,18 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
           defaultPowerDraw = 0;
           defaultDepth = 0.02;
           break;
+        case 'nas':
+          defaultPowerDraw = 150;
+          defaultDepth = 0.55;
+          break;
+        case 'firewall':
+          defaultPowerDraw = 40;
+          defaultDepth = 0.3;
+          break;
+        case 'brush':
+          defaultPowerDraw = 0;
+          defaultDepth = 0.02;
+          break;
       }
 
       return {
@@ -192,4 +216,10 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
     set((state) => ({
       viewMode: state.viewMode === '3D' ? 'blueprint' : '3D',
     })),
+
+  rackType: '2-post',
+  isDoorOpen: false,
+
+  setRackType: (rackType) => set({ rackType }),
+  setDoorOpen: (isDoorOpen) => set({ isDoorOpen }),
 }));
