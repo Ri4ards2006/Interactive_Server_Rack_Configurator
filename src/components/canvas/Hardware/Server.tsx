@@ -5,34 +5,12 @@
  * outline, and drag-to-snap interaction delegated to
  * `useHardwareInteraction`.
  *
- * Visual signature
- * ----------------
- * 3D mode (default): dark matte chassis + near-black bezel, no accent
- * stripe — reads as a plain utility server.
- *
- * Blueprint mode: flat fills (matching dark chassis colour but without
- * PBR reflections), with sharp cyan wireframe edges around the chassis
- * body AND bezel, plus the side-mounted U-tick labels in `RackLabels`.
- * The hardware components stay clickable / draggable in BOTH modes
- * (snap math, collision, DropIndicator colour flips all still functional).
- *
- * Implementation
- * --------------
- * - PBR chassis + bezel materials are module-scoped (allocated once
- *   and shared across every server). Blueprint palette + edge
- *   materials live in `./shared` for the same reason.
- * - The blueprint material swap is reference-based (ternary on each
- *   mesh's `material` prop), so toggling viewMode is a pointer swap —
- *   no allocations, no React-key churn.
- * - Pointer events, drag state, hover/cursor, selection, and the
- *   window-level drag-fallback all live in `useHardwareInteraction`.
- *   This component is responsible only for the chassis + bezel meshes
- *   themselves, plus the shared `<SelectionOutline />` halo when
- *   selected.
- *
- * Convention: `hardware.position[1]` = server's vertical CENTER in
- * rack-local coordinates (y=0 is the floor). This matches the store's
- * `addHardware` default of `position: [0, rackUnits * RACK_UNIT_HEIGHT / 2, 0]`.
+ * Visual overhaul:
+ * - Aligns to Z = 0.39 as front face so the chassis extends backward.
+ *   Avoids the floating look by mounting ears and side rails.
+ * - Details dynamic front drive bays (Release levers + bay outlines)
+ *   and status indicator LEDs.
+ * - Enhances textures using matte dark steel and anodized bezel.
  */
 
 import * as THREE from 'three';
@@ -49,20 +27,42 @@ import {
   blueprintChassisMaterial,
   blueprintBezelMaterial,
   useIsBlueprint,
+  RackMountDetails,
 } from './shared';
 
 // -- Hoisted PBR materials ---------------------------------------------
-// Module-scoped so they're allocated once and shared across every server.
 const chassisMaterial = new THREE.MeshStandardMaterial({
-  color: '#2b2b2b',
-  metalness: 0.85,
-  roughness: 0.4,
+  color: '#222224', // Matte textured dark steel
+  metalness: 0.5,
+  roughness: 0.6,
 });
 
 const bezelMaterial = new THREE.MeshStandardMaterial({
-  color: '#050505',
-  metalness: 0.5,
+  color: '#1a1a1c', // Anodized/brushed dark grey aluminum
+  metalness: 0.8,
+  roughness: 0.3,
+});
+
+const driveMaterial = new THREE.MeshStandardMaterial({
+  color: '#0f0f10', // Dark polymer drive bay
+  metalness: 0.6,
+  roughness: 0.4,
+});
+
+const leverMaterial = new THREE.MeshStandardMaterial({
+  color: '#4a4a4e', // Silver-brushed lever
+  metalness: 0.9,
   roughness: 0.2,
+});
+
+const ledBlueMaterial = new THREE.MeshBasicMaterial({
+  color: '#06b6d4', // Glowing cyan locator LED
+  toneMapped: false,
+});
+
+const ledGreenMaterial = new THREE.MeshBasicMaterial({
+  color: '#10b981', // Glowing green power LED
+  toneMapped: false,
 });
 
 interface ServerProps {
@@ -70,15 +70,18 @@ interface ServerProps {
 }
 
 export function Server({ hardware }: ServerProps) {
-  // All event handlers, hover/select/drag state, and the cursor
-  // styling live in the shared hook. We just spread them onto the
-  // outermost <group>.
   const interaction = useHardwareInteraction(hardware);
-
-  // Chassis height = U × rackUnits minus the shared edge gap so
-  // adjacent units keep a thin visible seam between them.
   const chassisHeight = hardware.rackUnits * RACK_UNIT_HEIGHT - EDGE_GAP;
   const isBlueprint = useIsBlueprint();
+
+  // Shift chassis body back so front aligns to Z = 0.39
+  const zShift = 0.39 - hardware.depth / 2;
+
+  // Dynamic drive grid based on U size
+  const driveRows = hardware.rackUnits;
+  const driveCols = 4;
+  const driveW = (CHASSIS_WIDTH - 0.1) / driveCols;
+  const driveH = (chassisHeight - 0.01) / driveRows;
 
   return (
     <group
@@ -90,8 +93,12 @@ export function Server({ hardware }: ServerProps) {
       onPointerUp={interaction.onPointerUp}
       onPointerCancel={interaction.onPointerCancel}
     >
-      {/* Main chassis */}
+      {/* Universal Rack Ears & Extension Support Rails */}
+      <RackMountDetails height={chassisHeight} depth={hardware.depth} isBlueprint={isBlueprint} />
+
+      {/* Main chassis body - shifted back */}
       <mesh
+        position={[0, 0, zShift]}
         castShadow={!isBlueprint}
         receiveShadow={!isBlueprint}
         material={isBlueprint ? blueprintChassisMaterial : chassisMaterial}
@@ -103,12 +110,13 @@ export function Server({ hardware }: ServerProps) {
           width={CHASSIS_WIDTH}
           height={chassisHeight}
           depth={hardware.depth}
+          position={[0, 0, zShift]}
         />
       )}
 
-      {/* Front bezel — slightly inset, very dark */}
+      {/* Front bezel - placed flush at Z = 0.39 */}
       <mesh
-        position={[0, 0, hardware.depth / 2 + 0.001]}
+        position={[0, 0, 0.39 + 0.001]}
         material={isBlueprint ? blueprintBezelMaterial : bezelMaterial}
       >
         <boxGeometry args={[CHASSIS_WIDTH - 0.02, chassisHeight, 0.002]} />
@@ -118,14 +126,48 @@ export function Server({ hardware }: ServerProps) {
           width={CHASSIS_WIDTH - 0.02}
           height={chassisHeight}
           depth={0.002}
+          position={[0, 0, 0.39 + 0.001]}
         />
       )}
 
-      {/* Selection halo — shared with Switch/Router/PatchPanel */}
+      {/* High-density drive bays & status LEDs */}
+      {!isBlueprint && (
+        <group position={[0, 0, 0.39 + 0.002]}>
+          {Array.from({ length: driveRows }).map((_, r) =>
+            Array.from({ length: driveCols }).map((_, c) => {
+              const dx = -CHASSIS_WIDTH / 2 + 0.05 + c * (driveW + 0.005) + driveW / 2;
+              const dy = -chassisHeight / 2 + 0.005 + r * (driveH + 0.002) + driveH / 2;
+              return (
+                <group key={`drive-${r}-${c}`} position={[dx, dy, 0]}>
+                  {/* Drive drawer */}
+                  <mesh material={driveMaterial}>
+                    <boxGeometry args={[driveW, driveH - 0.002, 0.001]} />
+                  </mesh>
+                  {/* Release lever */}
+                  <mesh position={[-driveW / 2 + 0.008, 0, 0.0005]} material={leverMaterial}>
+                    <boxGeometry args={[0.008, driveH - 0.006, 0.0005]} />
+                  </mesh>
+                </group>
+              );
+            })
+          )}
+
+          {/* Diagnostic indicators on the right wing */}
+          <mesh position={[CHASSIS_WIDTH / 2 - 0.02, 0, 0.001]} material={ledGreenMaterial}>
+            <sphereGeometry args={[0.0025, 8, 8]} />
+          </mesh>
+          <mesh position={[CHASSIS_WIDTH / 2 - 0.012, 0, 0.001]} material={ledBlueMaterial}>
+            <sphereGeometry args={[0.0025, 8, 8]} />
+          </mesh>
+        </group>
+      )}
+
+      {/* Selection outline - matches the shifted chassis position */}
       {interaction.isSelected && (
         <SelectionOutline
           rackUnits={hardware.rackUnits}
           depth={hardware.depth}
+          position={[0, 0, zShift]}
         />
       )}
     </group>

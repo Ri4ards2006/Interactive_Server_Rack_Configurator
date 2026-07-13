@@ -51,6 +51,8 @@ interface SelectionOutlineProps {
   rackUnits: number;
   /** Depth of the parent chassis, in meters. */
   depth: number;
+  /** Optional offset position. */
+  position?: [number, number, number];
 }
 
 /**
@@ -59,10 +61,10 @@ interface SelectionOutlineProps {
  * top of other meshes; combined with the material's `depthTest: false`
  * this guarantees the halo never disappears behind the chassis body.
  */
-export function SelectionOutline({ rackUnits, depth }: SelectionOutlineProps) {
+export function SelectionOutline({ rackUnits, depth, position = [0, 0, 0] }: SelectionOutlineProps) {
   return (
     <mesh
-      position={[0, 0, 0]}
+      position={position}
       material={selectionMaterial}
       renderOrder={999}
     >
@@ -185,3 +187,110 @@ export function SchematicBox({
     />
   );
 }
+
+// -- PBR Materials for Mounting Details ---------------------------------
+const earMaterial = new THREE.MeshStandardMaterial({
+  color: '#3a3a3a',
+  metalness: 0.8,
+  roughness: 0.4,
+});
+
+const railMaterial = new THREE.MeshStandardMaterial({
+  color: '#666668',
+  metalness: 0.9,
+  roughness: 0.3,
+});
+
+interface RackMountDetailsProps {
+  height: number;
+  depth: number;
+  isBlueprint: boolean;
+}
+
+/**
+ * Shared structural rack mount detailing.
+ * Renders L-brackets (ears) at the front face (Z = 0.39) and,
+ * if the device depth is shallow (< 0.5m), side support rails extending
+ * to the back of the rack to avoid a floating look.
+ */
+export function RackMountDetails({ height, depth, isBlueprint }: RackMountDetailsProps) {
+  const earHeight = height - 0.004;
+
+  return (
+    <group>
+      {/* Front flanges (Mounting Ears) - Center X at ±0.235, Z at 0.39 */}
+      <mesh
+        position={[-0.235, 0, 0.39]}
+        material={isBlueprint ? blueprintChassisMaterial : earMaterial}
+        castShadow={!isBlueprint}
+      >
+        <boxGeometry args={[0.03, earHeight, 0.003]} />
+      </mesh>
+      {isBlueprint && (
+        <SchematicBox width={0.03} height={earHeight} depth={0.003} position={[-0.235, 0, 0.39]} />
+      )}
+
+      <mesh
+        position={[0.235, 0, 0.39]}
+        material={isBlueprint ? blueprintChassisMaterial : earMaterial}
+        castShadow={!isBlueprint}
+      >
+        <boxGeometry args={[0.03, earHeight, 0.003]} />
+      </mesh>
+      {isBlueprint && (
+        <SchematicBox width={0.03} height={earHeight} depth={0.003} position={[0.235, 0, 0.39]} />
+      )}
+
+      {/* Rear attachment side-brackets for ears - Z extending slightly back */}
+      <mesh
+        position={[-0.221, 0, 0.37]}
+        material={isBlueprint ? blueprintChassisMaterial : earMaterial}
+      >
+        <boxGeometry args={[0.002, earHeight, 0.04]} />
+      </mesh>
+      {isBlueprint && (
+        <SchematicBox width={0.002} height={earHeight} depth={0.04} position={[-0.221, 0, 0.37]} />
+      )}
+
+      <mesh
+        position={[0.221, 0, 0.37]}
+        material={isBlueprint ? blueprintChassisMaterial : earMaterial}
+      >
+        <boxGeometry args={[0.002, earHeight, 0.04]} />
+      </mesh>
+      {isBlueprint && (
+        <SchematicBox width={0.002} height={earHeight} depth={0.04} position={[0.221, 0, 0.37]} />
+      )}
+
+      {/* Side drawer-slide support rails for shallow devices (depth < 0.5) */}
+      {depth < 0.5 && (
+        <group>
+          {/* Left support rail */}
+          <mesh
+            position={[-0.225, 0, 0]}
+            material={isBlueprint ? blueprintChassisMaterial : railMaterial}
+            castShadow={!isBlueprint}
+          >
+            <boxGeometry args={[0.008, 0.008, 0.78]} />
+          </mesh>
+          {isBlueprint && (
+            <SchematicBox width={0.008} height={0.008} depth={0.78} position={[-0.225, 0, 0]} />
+          )}
+
+          {/* Right support rail */}
+          <mesh
+            position={[0.225, 0, 0]}
+            material={isBlueprint ? blueprintChassisMaterial : railMaterial}
+            castShadow={!isBlueprint}
+          >
+            <boxGeometry args={[0.008, 0.008, 0.78]} />
+          </mesh>
+          {isBlueprint && (
+            <SchematicBox width={0.008} height={0.008} depth={0.78} position={[0.225, 0, 0]} />
+          )}
+        </group>
+      )}
+    </group>
+  );
+}
+
