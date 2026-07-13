@@ -38,9 +38,9 @@ export const RACK_UNIT_HEIGHT = 0.04445;
  *   cyan selection halo. Keeping these constants here means the
  *   halo can't drift away from the chassis dimensions.
  */
-export const CHASSIS_WIDTH = 0.85;
+export const CHASSIS_WIDTH = 0.44;
 export const EDGE_GAP = 0.005;
-export const SELECTION_OUTLINE_WIDTH = 0.88;
+export const SELECTION_OUTLINE_WIDTH = 0.47;
 export const SELECTION_OUTLINE_INSET = 0.01;
 
 /**
