@@ -40,14 +40,16 @@ export function App() {
   }, [selectHardware]);
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-zinc-950 font-sans text-zinc-100 antialiased">
-      {/* The R3F Canvas — fills the entire viewport behind the overlay. */}
-      <div className="absolute inset-0">
+    <div className="relative h-screen w-screen overflow-hidden bg-zinc-950 font-sans antialiased text-zinc-100">
+      {/* Layer 1: The Fullscreen 3D Viewport */}
+      <div className="absolute inset-0 z-0">
         <Scene />
       </div>
-
-      {/* HTML overlay — sits above the canvas via z-index + absolute pos. */}
-      <ConfiguratorPanel />
+      
+      {/* Layer 2: The Interactive UI HUD Overlay */}
+      <div className="relative z-10 pointer-events-none h-full w-full">
+        <ConfiguratorPanel />
+      </div>
     </div>
   );
 }

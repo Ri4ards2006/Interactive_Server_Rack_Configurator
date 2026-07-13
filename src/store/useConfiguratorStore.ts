@@ -112,19 +112,26 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
   viewMode: '3D',
 
   addHardware: (type, rackUnits) =>
-    set((state) => ({
-      installedHardware: [
-        ...state.installedHardware,
-        {
-          id: generateId(),
-          type,
-          rackUnits,
-          powerDraw: Math.floor(Math.random() * 500) + 100,
-          depth: 0.6,
-          position: [0, (rackUnits * RACK_UNIT_HEIGHT) / 2, 0],
-        },
-      ],
-    })),
+    set((state) => {
+      const currentHighestY = state.installedHardware.reduce((acc, h) => {
+        const top = h.position[1] + (h.rackUnits * RACK_UNIT_HEIGHT) / 2;
+        return Math.max(acc, top);
+      }, 0);
+      const centerY = currentHighestY + (rackUnits * RACK_UNIT_HEIGHT) / 2;
+      return {
+        installedHardware: [
+          ...state.installedHardware,
+          {
+            id: generateId(),
+            type,
+            rackUnits,
+            powerDraw: Math.floor(Math.random() * 500) + 100,
+            depth: 0.6,
+            position: [0, centerY, 0],
+          },
+        ],
+      };
+    }),
 
   removeHardware: (id) =>
     set((state) => ({
