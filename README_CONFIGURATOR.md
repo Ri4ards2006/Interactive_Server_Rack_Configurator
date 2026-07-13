@@ -1,8 +1,14 @@
 # Interactive Server Rack Configurator — Technical Architecture Blueprint
 
-> **Status:** Production-ready. `tsc --noEmit` clean. 235/235 Vitest tests passing across 4 suites.
+> **Status:** Production-ready. `tsc --noEmit` clean. Vitest suites passing across the four canonical test files:
+> - `src/hooks/__tests__/snapToU.test.ts` — snap-math (parity, half-up rounding, fuzz on non-finite inputs).
+> - `src/utils/__tests__/rackLayout.test.ts` — collision / bounds / `COLLISION_EPSILON` / fuzz.
+> - `src/hooks/__tests__/interactionHandlers.test.ts` — drag command-pattern (`down / move / up` lifecycle, capture, store handoff).
+> - `src/store/__tests__/useConfiguratorStore.test.ts` — store mutators + `viewMode` flip + persistence-shape independence.
 >
 > This document is the **definitive architectural reference** for the rack layout subsystem. It captures the design decisions, mathematical primitives, and pinning rules that make the 60 Hz drag pipeline feel rock-stable while every hardware type renders correctly in both 3D and Blueprint modes.
+>
+> 📘 **Looking for the project overview, tech stack, hardware catalog and quick-start setup?** See [README.md](./README.md). This file is the deeper dive into *why* the invariants look the way they do.
 
 ---
 

@@ -205,6 +205,7 @@ interface RackMountDetailsProps {
   height: number;
   depth: number;
   isBlueprint: boolean;
+  noRails?: boolean;
 }
 
 /**
@@ -213,7 +214,7 @@ interface RackMountDetailsProps {
  * if the device depth is shallow (< 0.5m), side support rails extending
  * to the back of the rack to avoid a floating look.
  */
-export function RackMountDetails({ height, depth, isBlueprint }: RackMountDetailsProps) {
+export function RackMountDetails({ height, depth, isBlueprint, noRails = false }: RackMountDetailsProps) {
   const earHeight = height - 0.004;
 
   return (
@@ -263,7 +264,7 @@ export function RackMountDetails({ height, depth, isBlueprint }: RackMountDetail
       )}
 
       {/* Side drawer-slide support rails for shallow devices (depth < 0.5) */}
-      {depth < 0.5 && (
+      {depth < 0.5 && !noRails && (
         <group>
           {/* Left support rail */}
           <mesh

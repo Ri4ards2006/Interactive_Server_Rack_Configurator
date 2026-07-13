@@ -118,6 +118,45 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
         return Math.max(acc, top);
       }, 0);
       const centerY = currentHighestY + (rackUnits * RACK_UNIT_HEIGHT) / 2;
+
+      let defaultPowerDraw = 150;
+      let defaultDepth = 0.6;
+
+      switch (type) {
+        case 'server':
+          defaultPowerDraw = rackUnits === 1 ? 150 : rackUnits === 2 ? 300 : 500;
+          defaultDepth = 0.6;
+          break;
+        case 'switch':
+          defaultPowerDraw = 50;
+          defaultDepth = 0.3;
+          break;
+        case 'router':
+          defaultPowerDraw = rackUnits === 1 ? 80 : 150;
+          defaultDepth = 0.4;
+          break;
+        case 'patch-panel':
+          defaultPowerDraw = 0;
+          defaultDepth = 0.1;
+          break;
+        case 'ups':
+          defaultPowerDraw = -1500;
+          defaultDepth = 0.6;
+          break;
+        case 'kvm':
+          defaultPowerDraw = 30;
+          defaultDepth = 0.4;
+          break;
+        case 'jbod':
+          defaultPowerDraw = 600;
+          defaultDepth = 0.65;
+          break;
+        case 'blank':
+          defaultPowerDraw = 0;
+          defaultDepth = 0.02;
+          break;
+      }
+
       return {
         installedHardware: [
           ...state.installedHardware,
@@ -125,8 +164,8 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
             id: generateId(),
             type,
             rackUnits,
-            powerDraw: Math.floor(Math.random() * 500) + 100,
-            depth: 0.6,
+            powerDraw: defaultPowerDraw,
+            depth: defaultDepth,
             position: [0, centerY, 0],
           },
         ],

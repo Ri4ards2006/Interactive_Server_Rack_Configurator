@@ -329,6 +329,96 @@ export function ConfiguratorPanel() {
               </button>
             </div>
           </div>
+
+          <div>
+            <label className="text-[9px] uppercase tracking-wider text-zinc-500 block mb-2">
+              [ INJECT AUXILIARY ]
+            </label>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => addHardware('ups', 2)}
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
+              >
+                <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="4" width="20" height="16" rx="1" />
+                  <rect x="5" y="8" width="6" height="4" />
+                  <circle cx="16" cy="10" r="1.5" />
+                </svg>
+                <span>UPS POWER BACKUP 2U</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => addHardware('kvm', 1)}
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
+              >
+                <svg className="w-4 h-4 text-teal-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="6" width="20" height="12" rx="1" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                  <rect x="7" y="8" width="10" height="2" />
+                </svg>
+                <span>KVM DRAWER 1U</span>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[9px] uppercase tracking-wider text-zinc-500 block mb-2">
+              [ INJECT STORAGE ]
+            </label>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => addHardware('jbod', 4)}
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
+              >
+                <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="2" width="20" height="20" rx="1" />
+                  <line x1="2" y1="8" x2="22" y2="8" />
+                  <line x1="2" y1="14" x2="22" y2="14" />
+                  <circle cx="6" cy="5" r="1.5" />
+                  <circle cx="18" cy="5" r="1.5" />
+                  <circle cx="6" cy="11" r="1.5" />
+                  <circle cx="18" cy="11" r="1.5" />
+                  <circle cx="6" cy="17" r="1.5" />
+                  <circle cx="18" cy="17" r="1.5" />
+                </svg>
+                <span>JBOD STORAGE 4U</span>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-[9px] uppercase tracking-wider text-zinc-500 block mb-2">
+              [ INJECT AIRFLOW ]
+            </label>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => addHardware('blank', 1)}
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
+              >
+                <svg className="w-4 h-4 text-zinc-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="6" width="20" height="12" rx="1" />
+                  <line x1="4" y1="12" x2="6" y2="12" />
+                  <line x1="18" y1="12" x2="20" y2="12" />
+                </svg>
+                <span>BLANKING PANEL 1U</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => addHardware('blank', 2)}
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
+              >
+                <svg className="w-4 h-4 text-zinc-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="4" width="20" height="16" rx="1" />
+                  <line x1="4" y1="12" x2="6" y2="12" />
+                  <line x1="18" y1="12" x2="20" y2="12" />
+                </svg>
+                <span>BLANKING PANEL 2U</span>
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* Footer */}

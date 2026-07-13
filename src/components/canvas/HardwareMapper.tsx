@@ -25,6 +25,10 @@ import { Server } from './Hardware/Server';
 import { Switch } from './Hardware/Switch';
 import { Router } from './Hardware/Router';
 import { PatchPanel } from './Hardware/PatchPanel';
+import { UPS } from './Hardware/UPS';
+import { KVMConsole } from './Hardware/KVMConsole';
+import { JBOD } from './Hardware/JBOD';
+import { BlankingPanel } from './Hardware/BlankingPanel';
 
 export function HardwareMapper() {
   const installedHardware = useConfiguratorStore(
@@ -43,6 +47,14 @@ export function HardwareMapper() {
             return <Router key={h.id} hardware={h} />;
           case 'patch-panel':
             return <PatchPanel key={h.id} hardware={h} />;
+          case 'ups':
+            return <UPS key={h.id} hardware={h} />;
+          case 'kvm':
+            return <KVMConsole key={h.id} hardware={h} />;
+          case 'jbod':
+            return <JBOD key={h.id} hardware={h} />;
+          case 'blank':
+            return <BlankingPanel key={h.id} hardware={h} />;
           default: {
             // Exhaustiveness guard — TS narrows `h.type` to `never` here
             // so adding a new HardwareType without updating this switch

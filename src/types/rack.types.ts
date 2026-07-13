@@ -15,7 +15,11 @@ export type HardwareType =
   | 'server'
   | 'switch'
   | 'router'
-  | 'patch-panel';
+  | 'patch-panel'
+  | 'ups'
+  | 'kvm'
+  | 'jbod'
+  | 'blank';
 
 /** Convenience alias for a 3D position tuple used everywhere in the scene. */
 export type Vec3 = [number, number, number];
