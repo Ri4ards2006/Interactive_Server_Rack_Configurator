@@ -8,10 +8,8 @@
  * Design Language:
  * - Minimalist video-game/SaaS HUD matching richardzuikov.com
  *   (zinc-950/60 backdrop, razor-thin tech borders, font-mono readouts).
- * - Immersive HUD layout engine: resolves split-screen clipping with
- *   independent scroll overflow containers.
- * - Zen Mode: toggles sidebar visibility with a smooth Tailwind transition
- *   and full pointer-event isolation.
+ * - Fixed floating panels to prevent layout breaks on short viewports.
+ * - Zen Mode: toggles sidebar visibility with transition-all duration-300.
  */
 
 import { useMemo, useState } from 'react';
@@ -110,7 +108,7 @@ export function ConfiguratorPanel() {
   };
 
   return (
-    <div className="absolute inset-0 min-h-[600px] flex justify-between p-4 pointer-events-none font-mono text-zinc-300">
+    <div className="pointer-events-none font-mono text-zinc-300">
       
       {/* ----------------------------------------------------------------- */}
       {/* ZEN MODE TOGGLE (Top Center HUD Trigger)                          */}
@@ -119,7 +117,7 @@ export function ConfiguratorPanel() {
         <button
           type="button"
           onClick={() => setIsZen(!isZen)}
-          className="pointer-events-auto shadow-md border border-zinc-700/50 bg-zinc-900/90 z-50 flex items-center gap-2 px-3 py-1.5 hover:text-zinc-100 transition-all text-xs font-mono rounded-lg active:scale-95 backdrop-blur-md text-zinc-400"
+          className="pointer-events-auto shadow-md border border-zinc-700/50 bg-zinc-900/90 z-50 flex items-center gap-2 px-3 py-1.5 hover:text-zinc-100 transition-all text-xs font-mono rounded-lg active:scale-95 backdrop-blur-md text-zinc-400 cursor-pointer"
         >
           <span>{isZen ? '[ SHOW UI ]' : '[ ZEN MODE ]'}</span>
         </button>
@@ -129,12 +127,12 @@ export function ConfiguratorPanel() {
       {/* LEFT SIDEBAR: Configurator, Mode, Specs, Hardware Catalog         */}
       {/* ----------------------------------------------------------------- */}
       <aside
-        className={`w-[360px] max-h-full flex flex-col pointer-events-auto bg-zinc-950/60 backdrop-blur-md border border-zinc-800/60 rounded-lg overflow-y-auto transition-all duration-300 ${
-          isZen ? 'opacity-0 pointer-events-none -translate-x-4' : 'opacity-100 translate-x-0'
+        className={`fixed top-4 left-4 bottom-4 w-96 flex flex-col border border-zinc-800/60 bg-zinc-950/60 backdrop-blur-md p-6 overflow-y-auto transition-all duration-300 rounded-lg ${
+          isZen ? 'opacity-0 -translate-x-12 pointer-events-none' : 'opacity-100 translate-x-0 pointer-events-auto'
         }`}
       >
         {/* Header */}
-        <div className="p-4 border-b border-zinc-800/60 flex items-center justify-between">
+        <div className="pb-4 border-b border-zinc-800/60 flex items-center justify-between">
           <div>
             <h2 className="text-xs font-bold tracking-[0.2em] uppercase text-zinc-100 font-mono">
               SYSTEM.SYS
@@ -150,7 +148,7 @@ export function ConfiguratorPanel() {
         </div>
 
         {/* View Mode */}
-        <div className="p-4 border-b border-zinc-800/60 flex flex-col gap-2">
+        <div className="py-4 border-b border-zinc-800/60 flex flex-col gap-2">
           <label className="text-[9px] uppercase tracking-wider text-zinc-500">
             [ VIEWPORT_SETTING ]
           </label>
@@ -158,7 +156,7 @@ export function ConfiguratorPanel() {
             <button
               type="button"
               onClick={() => viewMode === 'blueprint' && toggleViewMode()}
-              className={`py-1.5 text-center text-xs font-mono rounded transition-all focus:outline-none ${
+              className={`py-1.5 text-center text-xs font-mono rounded transition-all focus:outline-none cursor-pointer ${
                 viewMode === '3D'
                   ? 'bg-zinc-850 text-zinc-100 border border-zinc-700/50 shadow-sm'
                   : 'text-zinc-500 hover:text-zinc-300'
@@ -169,7 +167,7 @@ export function ConfiguratorPanel() {
             <button
               type="button"
               onClick={() => viewMode === '3D' && toggleViewMode()}
-              className={`py-1.5 text-center text-xs font-mono rounded transition-all focus:outline-none ${
+              className={`py-1.5 text-center text-xs font-mono rounded transition-all focus:outline-none cursor-pointer ${
                 viewMode === 'blueprint'
                   ? 'bg-cyan-950/20 text-cyan-400 border border-cyan-800/40 shadow-sm'
                   : 'text-zinc-500 hover:text-zinc-300'
@@ -181,7 +179,7 @@ export function ConfiguratorPanel() {
         </div>
 
         {/* Stats */}
-        <div className="p-4 border-b border-zinc-800/60 flex flex-col gap-3 font-mono">
+        <div className="py-4 border-b border-zinc-800/60 flex flex-col gap-3 font-mono">
           <div className="flex justify-between text-[10px] text-zinc-500">
             <span>CAPACITY_USE</span>
             <span className="text-zinc-300 font-semibold">{utilizationPct.toFixed(1)}%</span>
@@ -215,33 +213,51 @@ export function ConfiguratorPanel() {
           </div>
         </div>
 
-        {/* Add hardware */}
-        <div className="flex-1 p-4 flex flex-col gap-4 overflow-y-auto">
+        {/* Add hardware catalog */}
+        <div className="py-4 flex flex-col gap-4">
           <div>
             <label className="text-[9px] uppercase tracking-wider text-zinc-500 block mb-2">
               [ INJECT COMPUTE ]
             </label>
-            <div className="grid grid-cols-3 gap-1.5">
+            <div className="flex flex-col gap-2">
               <button
                 type="button"
                 onClick={() => addHardware('server', 1)}
-                className="py-2 px-1 text-center font-mono text-[9px] uppercase border border-zinc-800/60 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-400 focus:outline-none"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
               >
-                [ +1U SRV ]
+                <svg className="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="5" width="20" height="6" rx="1" />
+                  <line x1="6" y1="8" x2="8" y2="8" strokeLinecap="round" />
+                  <circle cx="16" cy="8" r="0.75" fill="currentColor" />
+                  <circle cx="18" cy="8" r="0.75" fill="currentColor" />
+                </svg>
+                <span>SERVER 1U</span>
               </button>
               <button
                 type="button"
                 onClick={() => addHardware('server', 2)}
-                className="py-2 px-1 text-center font-mono text-[9px] uppercase border border-zinc-800/60 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-400 focus:outline-none"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
               >
-                [ +2U SRV ]
+                <svg className="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="5" width="20" height="6" rx="1" />
+                  <line x1="6" y1="8" x2="8" y2="8" strokeLinecap="round" />
+                  <rect x="2" y="13" width="20" height="6" rx="1" />
+                  <line x1="6" y1="16" x2="8" y2="16" strokeLinecap="round" />
+                </svg>
+                <span>SERVER 2U</span>
               </button>
               <button
                 type="button"
                 onClick={() => addHardware('server', 4)}
-                className="py-2 px-1 text-center font-mono text-[9px] uppercase border border-zinc-800/60 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-400 focus:outline-none"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
               >
-                [ +4U SRV ]
+                <svg className="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="2" width="20" height="20" rx="1" />
+                  <line x1="6" y1="6" x2="8" y2="6" strokeLinecap="round" />
+                  <line x1="6" y1="12" x2="8" y2="12" strokeLinecap="round" />
+                  <line x1="6" y1="18" x2="8" y2="18" strokeLinecap="round" />
+                </svg>
+                <span>SERVER 4U</span>
               </button>
             </div>
           </div>
@@ -250,45 +266,74 @@ export function ConfiguratorPanel() {
             <label className="text-[9px] uppercase tracking-wider text-zinc-500 block mb-2">
               [ INJECT NETWORKING ]
             </label>
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-2">
               <button
                 type="button"
                 onClick={() => addHardware('switch', 1)}
-                className="py-2 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/60 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-400 flex justify-between items-center focus:outline-none"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
               >
-                <span>[ SWITCH.NET ]</span>
-                <span className="text-zinc-500">1U</span>
+                <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="6" width="20" height="12" rx="1" />
+                  <rect x="5" y="9" width="2" height="2" />
+                  <rect x="9" y="9" width="2" height="2" />
+                  <rect x="13" y="9" width="2" height="2" />
+                  <rect x="17" y="9" width="2" height="2" />
+                  <rect x="5" y="13" width="2" height="2" />
+                  <rect x="9" y="13" width="2" height="2" />
+                  <rect x="13" y="13" width="2" height="2" />
+                  <rect x="17" y="13" width="2" height="2" />
+                </svg>
+                <span>SWITCH.NET 1U</span>
               </button>
               <button
                 type="button"
                 onClick={() => addHardware('router', 1)}
-                className="py-2 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/60 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-400 flex justify-between items-center focus:outline-none"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
               >
-                <span>[ CORE-RTR.1 ]</span>
-                <span className="text-zinc-500">1U</span>
+                <svg className="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="6" width="20" height="12" rx="1" />
+                  <circle cx="6" cy="12" r="1.5" />
+                  <line x1="10" y1="12" x2="20" y2="12" />
+                  <circle cx="14" cy="12" r="1" />
+                  <circle cx="18" cy="12" r="1" />
+                </svg>
+                <span>CORE-RTR.1 1U</span>
               </button>
               <button
                 type="button"
                 onClick={() => addHardware('router', 2)}
-                className="py-2 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/60 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-400 flex justify-between items-center focus:outline-none"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
               >
-                <span>[ CORE-RTR.2 ]</span>
-                <span className="text-zinc-500">2U</span>
+                <svg className="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="4" width="20" height="16" rx="1" />
+                  <line x1="12" y1="4" x2="12" y2="20" />
+                  <circle cx="6" cy="12" r="2" />
+                  <circle cx="18" cy="12" r="2" />
+                </svg>
+                <span>CORE-RTR.2 2U</span>
               </button>
               <button
                 type="button"
                 onClick={() => addHardware('patch-panel', 1)}
-                className="py-2 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/60 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-400 flex justify-between items-center focus:outline-none"
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer"
               >
-                <span>[ CABLE-MNG.P ]</span>
-                <span className="text-zinc-500">1U</span>
+                <svg className="w-4 h-4 text-violet-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="6" width="20" height="12" rx="1" />
+                  <circle cx="5" cy="12" r="1" />
+                  <circle cx="8" cy="12" r="1" />
+                  <circle cx="11" cy="12" r="1" />
+                  <circle cx="14" cy="12" r="1" />
+                  <circle cx="17" cy="12" r="1" />
+                  <circle cx="20" cy="12" r="1" />
+                </svg>
+                <span>CABLE-MNG.P 1U</span>
               </button>
             </div>
           </div>
         </div>
 
         {/* Footer */}
-        <div className="p-3 border-t border-zinc-800/60 text-center text-[8px] text-zinc-600 uppercase tracking-widest font-mono select-none">
+        <div className="mt-auto pt-3 border-t border-zinc-800/60 text-center text-[8px] text-zinc-600 uppercase tracking-widest font-mono select-none">
           SYS-STATUS: OK
         </div>
       </aside>
@@ -297,12 +342,12 @@ export function ConfiguratorPanel() {
       {/* RIGHT SIDEBAR: Hardware Inventory & Sleek Inspector               */}
       {/* ----------------------------------------------------------------- */}
       <aside
-        className={`w-[320px] max-h-full flex flex-col pointer-events-auto bg-zinc-950/60 backdrop-blur-md border border-zinc-800/60 rounded-lg overflow-y-auto transition-all duration-300 ${
-          isZen ? 'opacity-0 pointer-events-none translate-x-4' : 'opacity-100 translate-x-0'
+        className={`fixed top-4 right-4 bottom-4 w-80 flex flex-col border border-zinc-800/60 bg-zinc-950/60 backdrop-blur-md p-6 overflow-y-auto transition-all duration-300 rounded-lg ${
+          isZen ? 'opacity-0 translate-x-12 pointer-events-none' : 'opacity-100 translate-x-0 pointer-events-auto'
         }`}
       >
         {/* Header */}
-        <div className="p-4 border-b border-zinc-800/60 flex justify-between items-baseline">
+        <div className="pb-4 border-b border-zinc-800/60 flex justify-between items-baseline">
           <div>
             <h2 className="text-xs font-bold tracking-[0.2em] uppercase text-zinc-100 font-mono">
               INVENTORY.LOG
@@ -317,7 +362,7 @@ export function ConfiguratorPanel() {
         </div>
 
         {/* Inventory list */}
-        <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-1.5">
+        <div className="py-4 flex flex-col gap-1.5">
           {installedHardware.length === 0 ? (
             <div className="rounded border border-dashed border-zinc-800 px-3 py-10 text-center font-mono text-[10px] text-zinc-600 flex flex-col justify-center h-48 bg-zinc-950/20 select-none">
               <span>NO MOUNTED CHASSIS</span>
@@ -352,7 +397,7 @@ export function ConfiguratorPanel() {
                           e.stopPropagation();
                           removeHardware(h.id);
                         }}
-                        className="text-zinc-600 hover:text-red-400 transition-colors p-0.5 rounded text-[8px] font-mono select-none focus:outline-none"
+                        className="text-zinc-650 hover:text-red-400 transition-colors p-0.5 rounded text-[8px] font-mono select-none focus:outline-none cursor-pointer"
                         title="Decommission Asset"
                       >
                         [X]
@@ -372,7 +417,7 @@ export function ConfiguratorPanel() {
 
         {/* Hardware Diagnostics Inspector */}
         {selectedHardware && (
-          <div className="border-t border-zinc-800/60 p-4 bg-zinc-950/80 backdrop-blur-md flex flex-col gap-3 shrink-0 shadow-[0_-8px_16px_rgba(0,0,0,0.5)]">
+          <div className="border-t border-zinc-800/60 pt-4 mt-auto flex flex-col gap-3 shrink-0">
             <div className="flex items-center justify-between border-b border-zinc-800 pb-2 flex-wrap gap-2">
               <div>
                 <span className="text-[8px] font-mono uppercase text-zinc-500 tracking-widest block">
@@ -392,7 +437,7 @@ export function ConfiguratorPanel() {
                   type="button"
                   onClick={() => shiftHardware('down')}
                   disabled={!canShiftDown}
-                  className={`p-1 rounded transition-colors focus:outline-none ${
+                  className={`p-1 rounded transition-colors focus:outline-none cursor-pointer ${
                     canShiftDown ? 'text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800' : 'text-zinc-800 cursor-not-allowed'
                   }`}
                   title="Shift Position Down"
@@ -405,7 +450,7 @@ export function ConfiguratorPanel() {
                   type="button"
                   onClick={() => shiftHardware('up')}
                   disabled={!canShiftUp}
-                  className={`p-1 rounded transition-colors focus:outline-none ${
+                  className={`p-1 rounded transition-colors focus:outline-none cursor-pointer ${
                     canShiftUp ? 'text-zinc-400 hover:text-cyan-400 hover:bg-zinc-800' : 'text-zinc-800 cursor-not-allowed'
                   }`}
                   title="Shift Position Up"
@@ -455,7 +500,7 @@ export function ConfiguratorPanel() {
               <button
                 type="button"
                 onClick={() => selectHardware(null)}
-                className="w-full py-1 text-center font-mono text-[9px] border border-zinc-800 hover:border-zinc-600 hover:text-zinc-200 transition-colors uppercase focus:outline-none"
+                className="w-full py-1.5 text-center font-mono text-[9px] border border-zinc-800 hover:border-zinc-650 hover:text-zinc-200 transition-colors uppercase focus:outline-none cursor-pointer rounded"
               >
                 [ DESELECT ASSET ]
               </button>
