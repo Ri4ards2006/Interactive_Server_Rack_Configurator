@@ -20,6 +20,7 @@ import {
   EDGE_GAP,
 } from '../../../store/useConfiguratorStore';
 import type { HardwareProps } from '../../../types/rack.types';
+import { Port } from './PatchCable';
 import { useHardwareInteraction } from '../../../hooks/useHardwareInteraction';
 import {
   SelectionOutline,
@@ -161,6 +162,19 @@ export function Server({ hardware }: ServerProps) {
           </mesh>
         </group>
       )}
+
+      {/* Interactive Ports Overlay */}
+      {hardware.ports?.map((p) => (
+        <Port
+          key={p.id}
+          deviceId={hardware.id}
+          portId={p.id}
+          relativePos={p.position}
+          devicePosition={hardware.position}
+          cableId={p.cableId}
+          label={p.label}
+        />
+      ))}
 
       {/* Selection outline - matches the shifted chassis position */}
       {interaction.isSelected && (

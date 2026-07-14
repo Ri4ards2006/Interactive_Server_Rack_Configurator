@@ -28,6 +28,13 @@ export type HardwareType =
 /** Convenience alias for a 3D position tuple used everywhere in the scene. */
 export type Vec3 = [number, number, number];
 
+export interface PortProps {
+  id: string;
+  label: string;
+  position: Vec3; // relative to device origin [x, y, z]
+  cableId: string | null;
+}
+
 /**
  * Describes a single piece of hardware installed in the rack.
  *
@@ -41,6 +48,7 @@ export interface HardwareProps {
   powerDraw: number; // Watts
   depth: number; // meters (typical server is ~0.6 m / 60 cm)
   position: Vec3; // meters, in rack-local space
+  ports?: PortProps[];
 }
 
 export interface CableProps {

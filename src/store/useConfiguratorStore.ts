@@ -21,7 +21,17 @@ import {
   RackState,
   Vec3,
   CableProps,
+  PortProps,
 } from '../types/rack.types';
+
+export interface DraggingCableProps {
+  cableId: string | null; // null if creating a new cable
+  fromDevice: string;
+  fromPort: string;
+  color: string;
+  startPortGlobalPos: Vec3;
+  currentMouseWorldPos: Vec3;
+}
 
 /** 1U height in meters (~4.445 cm, the EIA-310 standard). */
 export const RACK_UNIT_HEIGHT = 0.04445;
@@ -65,6 +75,9 @@ export interface ConfiguratorState extends RackState {
    */
   viewMode: '3D' | 'blueprint';
 
+  /** Active dragging state for interactive cable routing. */
+  activeDraggingCable: DraggingCableProps | null;
+
   // -- Mutators ----------------------------------------------------------
 
   /** Append a new piece of hardware at a sensible default location. */
@@ -104,6 +117,18 @@ export interface ConfiguratorState extends RackState {
 
   /** Unpatches a cable connection. */
   removeCable: (id: string) => void;
+
+  /** Unplugs a connection from a specific port. */
+  unpatchPort: (deviceId: string, portId: string) => void;
+
+  /** Starts interactive cable dragging from a port. */
+  startDraggingCable: (fromDevice: string, fromPort: string, startPortGlobalPos: Vec3, color?: string) => void;
+
+  /** Updates the current drag position. */
+  updateDraggingCable: (currentMouseWorldPos: Vec3) => void;
+
+  /** Cancels or finishes drag action. */
+  stopDraggingCable: () => void;
 }
 
 /**
@@ -115,6 +140,111 @@ const generateId = (): string =>
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
+/**
+ * Generates relative 3D port positions on the chassis front plate based on the device type.
+ */
+const generatePortsForDevice = (type: HardwareType): PortProps[] | undefined => {
+  const ports: PortProps[] = [];
+  
+  if (type === 'switch') {
+    const portRows = 2;
+    const PORT_COLS = 24;
+    const PORT_W = 0.008;
+    const PORT_GAP_X = 0.004;
+    const PORT_GAP_Y = 0.004;
+    const PORT_H = 0.006;
+    const groupWidth = 12 * PORT_W + 11 * PORT_GAP_X;
+    const gapBetweenGroups = 0.02;
+    const startY = -((portRows * PORT_H + (portRows - 1) * PORT_GAP_Y) / 2) - 0.002;
+    
+    const getPortX = (c: number) => {
+      const isSecondGroup = c >= 12;
+      const groupCol = c % 12;
+      const base = -groupWidth - gapBetweenGroups / 2;
+      if (isSecondGroup) {
+        return gapBetweenGroups / 2 + groupCol * (PORT_W + PORT_GAP_X) + PORT_W / 2;
+      } else {
+        return base + groupCol * (PORT_W + PORT_GAP_X) + PORT_W / 2;
+      }
+    };
+    
+    let pIndex = 1;
+    for (let r = 0; r < portRows; r++) {
+      for (let c = 0; c < PORT_COLS; c++) {
+        ports.push({
+          id: `port-${pIndex}`,
+          label: `Port ${pIndex}`,
+          position: [getPortX(c), startY + r * (PORT_H + PORT_GAP_Y), 0.39 + 0.002],
+          cableId: null,
+        });
+        pIndex++;
+      }
+    }
+    return ports;
+  }
+  
+  if (type === 'firewall') {
+    // 8 copper ports
+    const copperPortsX = [-0.06, -0.046, -0.032, -0.018, 0.002, 0.016, 0.030, 0.044];
+    copperPortsX.forEach((x, idx) => {
+      ports.push({
+        id: `port-${idx + 1}`,
+        label: `GE ${idx + 1}`,
+        position: [x, -0.002, 0.39 + 0.003],
+        cableId: null,
+      });
+    });
+    // 4 SFP ports
+    const sfpPortsX = [0.076, 0.092, 0.108, 0.124];
+    sfpPortsX.forEach((x, idx) => {
+      ports.push({
+        id: `sfp-${idx + 1}`,
+        label: `SFP+ ${idx + 1}`,
+        position: [x, -0.002, 0.39 + 0.003],
+        cableId: null,
+      });
+    });
+    return ports;
+  }
+  
+  if (type === 'server' || type === 'nas') {
+    const serverPortsX = [-0.1, -0.06, 0.06, 0.1];
+    serverPortsX.forEach((x, idx) => {
+      ports.push({
+        id: `port-${idx + 1}`,
+        label: `LAN ${idx + 1}`,
+        position: [x, -0.008, 0.39 + 0.002],
+        cableId: null,
+      });
+    });
+    return ports;
+  }
+
+  if (type === 'patch-panel') {
+    const patchPanelPortsX = Array.from({ length: 24 }, (_, idx) => -0.16 + idx * (0.32 / 23));
+    patchPanelPortsX.forEach((x, idx) => {
+      ports.push({
+        id: `port-${idx + 1}`,
+        label: `Port ${idx + 1}`,
+        position: [x, 0, 0.39 + 0.002],
+        cableId: null,
+      });
+    });
+    return ports;
+  }
+  
+  return undefined;
+};
+
+// Seed default ports
+const defaultServerPorts = generatePortsForDevice('server')!;
+defaultServerPorts.find(p => p.id === 'port-4')!.cableId = 'default-cable-1';
+defaultServerPorts.find(p => p.id === 'port-3')!.cableId = 'default-cable-2'; // port-3 is LAN 3
+
+const defaultSwitchPorts = generatePortsForDevice('switch')!;
+defaultSwitchPorts.find(p => p.id === 'port-1')!.cableId = 'default-cable-1';
+defaultSwitchPorts.find(p => p.id === 'port-12')!.cableId = 'default-cable-2';
+
 export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
   capacity: 42,
   installedHardware: [
@@ -125,6 +255,7 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       powerDraw: 250,
       depth: 0.6,
       position: [0, 0.04445, 0], // Centered perfectly on slot 0 floor
+      ports: defaultServerPorts,
     },
     {
       id: "default-switch-1",
@@ -133,28 +264,30 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       powerDraw: 50,
       depth: 0.3,
       position: [0, 0.111125, 0], // U3 (offset = 2.5 * RACK_UNIT_HEIGHT)
+      ports: defaultSwitchPorts,
     },
   ],
   cables: [
     {
       id: "default-cable-1",
       fromDevice: "default-chassis-1",
-      fromPort: "4",
+      fromPort: "port-4",
       toDevice: "default-switch-1",
-      toPort: "1",
+      toPort: "port-1",
       color: "#eab308", // Ethernet yellow
     },
     {
       id: "default-cable-2",
       fromDevice: "default-chassis-1",
-      fromPort: "8",
+      fromPort: "port-3",
       toDevice: "default-switch-1",
-      toPort: "12",
+      toPort: "port-12",
       color: "#3b82f6", // Ethernet blue
     },
   ],
   selectedHardwareId: null,
   viewMode: '3D',
+  activeDraggingCable: null,
 
   addHardware: (type, rackUnits) =>
     set((state) => {
@@ -228,6 +361,7 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
             powerDraw: defaultPowerDraw,
             depth: defaultDepth,
             position: [0, centerY, 0],
+            ports: generatePortsForDevice(type),
           },
         ],
       };
@@ -242,24 +376,108 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
     })),
 
   addCable: (fromDevice, fromPort, toDevice, toPort, color) =>
-    set((state) => ({
-      cables: [
-        ...state.cables,
-        {
-          id: generateId(),
-          fromDevice,
-          fromPort,
-          toDevice,
-          toPort,
-          color,
-        },
-      ],
-    })),
+    set((state) => {
+      const cableId = generateId();
+      return {
+        cables: [
+          ...state.cables,
+          {
+            id: cableId,
+            fromDevice,
+            fromPort,
+            toDevice,
+            toPort,
+            color,
+          },
+        ],
+        installedHardware: state.installedHardware.map((h) => {
+          if (h.id === fromDevice || h.id === toDevice) {
+            return {
+              ...h,
+              ports: h.ports?.map((p) => {
+                if (h.id === fromDevice && p.id === fromPort) return { ...p, cableId };
+                if (h.id === toDevice && p.id === toPort) return { ...p, cableId };
+                return p;
+              }),
+            };
+          }
+          return h;
+        }),
+      };
+    }),
 
   removeCable: (id) =>
-    set((state) => ({
-      cables: state.cables.filter((c) => c.id !== id),
-    })),
+    set((state) => {
+      const targetCable = state.cables.find((c) => c.id === id);
+      if (!targetCable) return {};
+      return {
+        cables: state.cables.filter((c) => c.id !== id),
+        installedHardware: state.installedHardware.map((h) => {
+          if (h.id === targetCable.fromDevice || h.id === targetCable.toDevice) {
+            return {
+              ...h,
+              ports: h.ports?.map((p) => {
+                if (p.cableId === id) return { ...p, cableId: null };
+                return p;
+              }),
+            };
+          }
+          return h;
+        }),
+      };
+    }),
+
+  unpatchPort: (deviceId, portId) =>
+    set((state) => {
+      const dev = state.installedHardware.find((h) => h.id === deviceId);
+      const port = dev?.ports?.find((p) => p.id === portId);
+      if (!port || !port.cableId) return {};
+
+      const cableId = port.cableId;
+      const targetCable = state.cables.find((c) => c.id === cableId);
+      if (!targetCable) return {};
+
+      return {
+        cables: state.cables.filter((c) => c.id !== cableId),
+        installedHardware: state.installedHardware.map((h) => {
+          if (h.id === targetCable.fromDevice || h.id === targetCable.toDevice) {
+            return {
+              ...h,
+              ports: h.ports?.map((p) => {
+                if (p.cableId === cableId) return { ...p, cableId: null };
+                return p;
+              }),
+            };
+          }
+          return h;
+        }),
+      };
+    }),
+
+  startDraggingCable: (fromDevice, fromPort, startPortGlobalPos, color = '#3b82f6') =>
+    set({
+      activeDraggingCable: {
+        cableId: null,
+        fromDevice,
+        fromPort,
+        color,
+        startPortGlobalPos,
+        currentMouseWorldPos: startPortGlobalPos,
+      },
+    }),
+
+  updateDraggingCable: (currentMouseWorldPos) =>
+    set((state) => {
+      if (!state.activeDraggingCable) return {};
+      return {
+        activeDraggingCable: {
+          ...state.activeDraggingCable,
+          currentMouseWorldPos,
+        },
+      };
+    }),
+
+  stopDraggingCable: () => set({ activeDraggingCable: null }),
 
   updateHardwarePosition: (id, position) =>
     set((state) => ({
