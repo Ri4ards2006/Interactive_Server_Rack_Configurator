@@ -3,19 +3,22 @@
  *
  * 2U Network Attached Storage (NAS) chassis.
  * Rebuilt with high-fidelity detail:
- * - 12 individually interactive HDD caddies (3 rows of 4 columns, or 4 rows of 3 columns).
- * - Click on an HDD caddy to toggle its extraction (pull it out).
- * - Blinking activity LEDs with randomized timing on each HDD sled.
- * - Glowing OLED display with simulated text, detailed power toggle, and console port.
+ * - 12 individually interactive HDD caddies (4 rows of 3 columns).
+ * - Clicking pulls the HDD out, clicking again completely removes it.
+ * - Empty slots render a transparent "Ghost Sled" on hover.
+ * - Clicking the empty slot inserts a healthy, fresh HDD.
+ * - Simulates drive failures (LED blinks red rapidly).
  */
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
+import { useShallow } from 'zustand/react/shallow';
 import {
   RACK_UNIT_HEIGHT,
   CHASSIS_WIDTH,
   EDGE_GAP,
+  useConfiguratorStore,
 } from '../../../store/useConfiguratorStore';
 import type { HardwareProps } from '../../../types/rack.types';
 import { useHardwareInteraction } from '../../../hooks/useHardwareInteraction';
@@ -93,13 +96,216 @@ const usbPortMaterial = new THREE.MeshStandardMaterial({
   roughness: 0.2,
 });
 
+interface HddBayProps {
+  index: number;
+  r: number;
+  c: number;
+  xPos: number;
+  yPos: number;
+  bezelFrontZ: number;
+  depth: number;
+  isBlueprint: boolean;
+  deviceId: string;
+}
+
+/**
+ * Individual HDD caddy bay: manages click transitions (inserted -> extracted -> removed -> inserted),
+ * failed blinking lights, and empty caddy ghost hover meshes.
+ */
+function HddBay({ index, r, c, xPos, yPos, bezelFrontZ, depth, isBlueprint, deviceId }: HddBayProps) {
+  const [hovered, setHovered] = useState(false);
+  
+  const bay = useConfiguratorStore(
+    (s) => s.hddBays[deviceId]?.[index] || { status: 'inserted', isFailed: false }
+  );
+  
+  const toggleHddBay = useConfiguratorStore((s) => s.toggleHddBay);
+  const insertHddIntoBay = useConfiguratorStore((s) => s.insertHddIntoBay);
+
+  const isExtracted = bay.status === 'extracted';
+  const isRemoved = bay.status === 'removed';
+  const isFailed = bay.isFailed;
+
+  const sledZOffset = isExtracted ? 0.08 : 0.0;
+
+  const handleClick = (e: any) => {
+    e.stopPropagation();
+    if (isRemoved) {
+      insertHddIntoBay(deviceId, index);
+    } else {
+      toggleHddBay(deviceId, index);
+    }
+  };
+
+  if (isRemoved) {
+    return (
+      <group
+        position={[xPos, yPos, bezelFrontZ]}
+        onPointerOver={(e) => {
+          e.stopPropagation();
+          setHovered(true);
+        }}
+        onPointerOut={(e) => {
+          e.stopPropagation();
+          setHovered(false);
+        }}
+        onClick={handleClick}
+      >
+        {/* Dark slot recess */}
+        <mesh position={[0, 0, -0.005]}>
+          <boxGeometry args={[DRIVE_W - 0.002, DRIVE_H - 0.002, 0.01]} />
+          <meshBasicMaterial color="#050505" />
+        </mesh>
+        
+        {/* Ghost drive faceplate suggestion on hover */}
+        {hovered && !isBlueprint && (
+          <mesh position={[0, 0, 0.001]}>
+            <boxGeometry args={[DRIVE_W, DRIVE_H, 0.002]} />
+            <meshStandardMaterial
+              color="#22d3ee"
+              transparent
+              opacity={0.25}
+              roughness={0.5}
+              metalness={0.1}
+            />
+          </mesh>
+        )}
+      </group>
+    );
+  }
+
+  return (
+    <group
+      position={[xPos, yPos, bezelFrontZ + sledZOffset]}
+      onClick={handleClick}
+    >
+      {/* HDD Caddy Sled Body (extends back into chassis) */}
+      {!isBlueprint && (
+        <mesh
+          position={[0, 0, -depth / 2 + 0.01]}
+          castShadow
+          material={caddyMaterial}
+        >
+          <boxGeometry args={[DRIVE_W - 0.004, DRIVE_H - 0.002, depth - 0.02]} />
+        </mesh>
+      )}
+
+      {/* Front Bezel Faceplate */}
+      <mesh
+        position={[0, 0, 0.001]}
+        material={isBlueprint ? blueprintChassisMaterial : caddyFaceMaterial}
+        castShadow={!isBlueprint}
+      >
+        <boxGeometry args={[DRIVE_W, DRIVE_H, 0.003]} />
+      </mesh>
+
+      {/* Vent slots on caddy front */}
+      {!isBlueprint && (
+        <group position={[-0.01, 0, 0.0022]}>
+          <mesh material={bezelMaterial}>
+            <boxGeometry args={[0.038, 0.002, 0.0006]} />
+          </mesh>
+          <mesh material={bezelMaterial} position={[0, 0.003, 0]}>
+            <boxGeometry args={[0.038, 0.002, 0.0006]} />
+          </mesh>
+          <mesh material={bezelMaterial} position={[0, -0.003, 0]}>
+            <boxGeometry args={[0.038, 0.002, 0.0006]} />
+          </mesh>
+        </group>
+      )}
+
+      {/* Metal release latch lever */}
+      {!isBlueprint && (
+        <mesh
+          position={[-DRIVE_W / 2 + 0.016, 0, 0.0026]}
+          material={metalLeverMaterial}
+          castShadow
+        >
+          <boxGeometry args={[0.014, DRIVE_H - 0.004, 0.0015]} />
+        </mesh>
+      )}
+
+      {/* Solid power LED (Turns red if disk failed) */}
+      {!isBlueprint && (
+        <mesh position={[DRIVE_W / 2 - 0.015, 0.002, 0.0026]} material={isFailed ? ledRed : ledSolidGreen}>
+          <sphereGeometry args={[0.0012, 8, 8]} />
+        </mesh>
+      )}
+
+      {/* Flickering Disk Activity LED */}
+      {!isBlueprint && (
+        <ActivityLED r={r} c={c} isFailed={isFailed} />
+      )}
+
+      {isBlueprint && (
+        <SchematicBox
+          width={DRIVE_W}
+          height={DRIVE_H}
+          depth={0.003}
+          position={[0, 0, 0.001]}
+        />
+      )}
+    </group>
+  );
+}
+
+/**
+ * A helper component that drives the flickering activity LED of an HDD caddy.
+ * Keeps re-renders isolated to just the LED mesh itself.
+ * If disk has failed, it blinks red rapidly instead of green activity flashes.
+ */
+function ActivityLED({ r, c, isFailed }: { r: number; c: number; isFailed: boolean }) {
+  const ledRef = useRef<THREE.MeshStandardMaterial>(null);
+  
+  // Custom blinking speed coefficients based on row/column
+  const freq = 12 + r * 5 + c * 4;
+  const pulseOffset = r * 0.4 + c * 0.7;
+
+  useFrame((state) => {
+    if (!ledRef.current) return;
+    const t = state.clock.getElapsedTime();
+    
+    if (isFailed) {
+      // Rapid failed alarm blinking (8Hz red flash)
+      const isLit = Math.floor(t * 8.0) % 2 === 0;
+      ledRef.current.color.set('#ef4444');
+      ledRef.current.emissive.set('#ef4444');
+      ledRef.current.emissiveIntensity = isLit ? 1.6 : 0.05;
+    } else {
+      // Complex noise-like wave representing active reading
+      const val = Math.sin(t * freq + pulseOffset) * Math.cos(t * (freq * 0.6)) + Math.sin(t * 2);
+      const isLit = val > 0.4;
+      
+      if (isLit) {
+        ledRef.current.color.set('#10b981');
+        ledRef.current.emissive.set('#10b981');
+        ledRef.current.emissiveIntensity = 1.5;
+      } else {
+        ledRef.current.emissiveIntensity = 0.0;
+        ledRef.current.color.set('#064e3b');
+      }
+    }
+  });
+
+  return (
+    <mesh position={[DRIVE_W / 2 - 0.008, 0.002, 0.0026]}>
+      <sphereGeometry args={[0.0012, 8, 8]} />
+      <meshStandardMaterial
+        ref={ledRef}
+        color="#064e3b"
+        emissive="#10b981"
+        emissiveIntensity={0.0}
+        roughness={0.1}
+      />
+    </mesh>
+  );
+}
+
 interface NASProps {
   hardware: HardwareProps;
 }
 
 export function NAS({ hardware }: NASProps) {
-  const [extractedSleds, setExtractedSleds] = useState<Record<number, boolean>>({});
-
   const RACK_UNITS = 2;
   const DEPTH = 0.55;
 
@@ -122,22 +328,16 @@ export function NAS({ hardware }: NASProps) {
   const bezelFrontZ = 0.39 + 0.003;
 
   // Generate list of drive indexes
-  const driveIndices: Array<{ r: number; c: number; index: number }> = [];
-  let driveCount = 0;
-  for (let r = 0; r < DRIVE_ROWS; r++) {
-    for (let c = 0; c < DRIVE_COLS; c++) {
-      driveIndices.push({ r, c, index: driveCount++ });
+  const driveIndices = useMemo(() => {
+    const list: Array<{ r: number; c: number; index: number }> = [];
+    let driveCount = 0;
+    for (let r = 0; r < DRIVE_ROWS; r++) {
+      for (let c = 0; c < DRIVE_COLS; c++) {
+        list.push({ r, c, index: driveCount++ });
+      }
     }
-  }
-
-  // Toggle extraction of a drive caddy
-  const handleCaddyClick = (index: number, e: any) => {
-    e.stopPropagation(); // Prevent selecting/deselecting the NAS itself
-    setExtractedSleds((prev) => ({
-      ...prev,
-      [index]: !prev[index],
-    }));
-  };
+    return list;
+  }, []);
 
   return (
     <group
@@ -253,89 +453,24 @@ export function NAS({ hardware }: NASProps) {
         </group>
       )}
 
-      {/* Render HDD Caddies (individual meshes to allow sliding out & clicking) */}
+      {/* Render HDD Caddies */}
       {driveIndices.map(({ r, c, index }) => {
-        const isExtracted = !!extractedSleds[index];
-        const sledZOffset = isExtracted ? 0.08 : 0.0;
-        
-        // Horizontal/vertical positions
         const xPos = startX + c * (DRIVE_W + DRIVE_GAP_X);
         const yPos = startY + r * (DRIVE_H + DRIVE_GAP_Y);
 
         return (
-          <group
+          <HddBay
             key={index}
-            position={[xPos, yPos, bezelFrontZ + sledZOffset]}
-            onClick={(e) => handleCaddyClick(index, e)}
-          >
-            {/* HDD Caddy Sled Body (extends back into chassis) */}
-            {!isBlueprint && (
-              <mesh
-                position={[0, 0, -DEPTH / 2 + 0.01]}
-                castShadow
-                material={caddyMaterial}
-              >
-                {/* 3.5" drive mock enclosure */}
-                <boxGeometry args={[DRIVE_W - 0.004, DRIVE_H - 0.002, DEPTH - 0.02]} />
-              </mesh>
-            )}
-
-            {/* Front Bezel Faceplate */}
-            <mesh
-              position={[0, 0, 0.001]}
-              material={isBlueprint ? blueprintChassisMaterial : caddyFaceMaterial}
-              castShadow={!isBlueprint}
-            >
-              <boxGeometry args={[DRIVE_W, DRIVE_H, 0.003]} />
-            </mesh>
-
-            {/* Vent slots on caddy front */}
-            {!isBlueprint && (
-              <group position={[-0.01, 0, 0.0022]}>
-                <mesh material={bezelMaterial}>
-                  <boxGeometry args={[0.038, 0.002, 0.0006]} />
-                </mesh>
-                <mesh material={bezelMaterial} position={[0, 0.003, 0]}>
-                  <boxGeometry args={[0.038, 0.002, 0.0006]} />
-                </mesh>
-                <mesh material={bezelMaterial} position={[0, -0.003, 0]}>
-                  <boxGeometry args={[0.038, 0.002, 0.0006]} />
-                </mesh>
-              </group>
-            )}
-
-            {/* Metal release latch lever */}
-            {!isBlueprint && (
-              <mesh
-                position={[-DRIVE_W / 2 + 0.016, 0, 0.0026]}
-                material={metalLeverMaterial}
-                castShadow
-              >
-                <boxGeometry args={[0.014, DRIVE_H - 0.004, 0.0015]} />
-              </mesh>
-            )}
-
-            {/* Solid green power LED */}
-            {!isBlueprint && (
-              <mesh position={[DRIVE_W / 2 - 0.015, 0.002, 0.0026]} material={ledSolidGreen}>
-                <sphereGeometry args={[0.0012, 8, 8]} />
-              </mesh>
-            )}
-
-            {/* Flickering Disk Activity LED */}
-            {!isBlueprint && (
-              <ActivityLED r={r} c={c} isExtracted={isExtracted} />
-            )}
-
-            {isBlueprint && (
-              <SchematicBox
-                width={DRIVE_W}
-                height={DRIVE_H}
-                depth={0.003}
-                position={[0, 0, 0.001]}
-              />
-            )}
-          </group>
+            index={index}
+            r={r}
+            c={c}
+            xPos={xPos}
+            yPos={yPos}
+            bezelFrontZ={bezelFrontZ}
+            depth={DEPTH}
+            isBlueprint={isBlueprint}
+            deviceId={hardware.id}
+          />
         );
       })}
 
@@ -348,53 +483,5 @@ export function NAS({ hardware }: NASProps) {
         />
       )}
     </group>
-  );
-}
-
-/**
- * A helper component that drives the flickering activity LED of an HDD caddy.
- * Keeps re-renders isolated to just the LED mesh itself.
- */
-function ActivityLED({ r, c, isExtracted }: { r: number; c: number; isExtracted: boolean }) {
-  const ledRef = useRef<THREE.MeshStandardMaterial>(null);
-  
-  // Custom blinking speed coefficients based on row/column
-  const freq = 12 + r * 5 + c * 4;
-  const pulseOffset = r * 0.4 + c * 0.7;
-
-  useFrame((state) => {
-    if (!ledRef.current) return;
-    
-    // Simulate active disk read/write
-    const t = state.clock.getElapsedTime();
-    // Complex noise-like wave using trigonometry
-    const val = Math.sin(t * freq + pulseOffset) * Math.cos(t * (freq * 0.6)) + Math.sin(t * 2);
-    
-    // Threshold to decide if LED is illuminated
-    const isLit = val > 0.4;
-    
-    if (isLit) {
-      // 90% Green activity, 10% Amber fault simulation on index 3/2 (some disk error)
-      const isFaulty = r === 2 && c === 1;
-      ledRef.current.color.set(isFaulty ? '#ef4444' : '#10b981');
-      ledRef.current.emissive.set(isFaulty ? '#ef4444' : '#10b981');
-      ledRef.current.emissiveIntensity = 1.5;
-    } else {
-      ledRef.current.emissiveIntensity = 0.0;
-      ledRef.current.color.set('#064e3b');
-    }
-  });
-
-  return (
-    <mesh position={[DRIVE_W / 2 - 0.008, 0.002, 0.0026]}>
-      <sphereGeometry args={[0.0012, 8, 8]} />
-      <meshStandardMaterial
-        ref={ledRef}
-        color="#064e3b"
-        emissive="#10b981"
-        emissiveIntensity={0.0}
-        roughness={0.1}
-      />
-    </mesh>
   );
 }

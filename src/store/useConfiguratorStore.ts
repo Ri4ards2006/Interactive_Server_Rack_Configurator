@@ -24,6 +24,11 @@ import {
   PortProps,
 } from '../types/rack.types';
 
+export interface HddBayState {
+  status: 'inserted' | 'extracted' | 'removed';
+  isFailed: boolean;
+}
+
 export interface DraggingCableProps {
   cableId: string | null; // null if creating a new cable
   fromDevice: string;
@@ -84,7 +89,22 @@ export interface ConfiguratorState extends RackState {
   /** Active dragging state for interactive cable routing. */
   activeDraggingCable: DraggingCableProps | null;
 
+  /** HDD hot-swap caddy registry indexed by deviceId and bay index. */
+  hddBays: Record<string, Record<number, HddBayState>>;
+
   // -- Mutators ----------------------------------------------------------
+
+  /** Toggle HDD extraction / removal status. */
+  toggleHddBay: (deviceId: string, bayIndex: number) => void;
+
+  /** Remove HDD completely from the slot. */
+  removeHddFromBay: (deviceId: string, bayIndex: number) => void;
+
+  /** Insert a fresh healthy HDD into the empty slot. */
+  insertHddIntoBay: (deviceId: string, bayIndex: number) => void;
+
+  /** Simulates a random HDD failure on any eligible server or NAS. */
+  simulateHddFailure: () => void;
 
   /** Append a new piece of hardware at a sensible default location. */
   addHardware: (type: HardwareType, rackUnits: number) => void;
@@ -331,6 +351,18 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
   selectCable: (id) => set({ selectedCableId: id }),
   viewMode: '3D',
   activeDraggingCable: null,
+  hddBays: {
+    "default-chassis-1": {
+      0: { status: 'inserted', isFailed: false },
+      1: { status: 'inserted', isFailed: false },
+      2: { status: 'inserted', isFailed: false },
+      3: { status: 'inserted', isFailed: true }, // Pre-failed to show failure simulation
+      4: { status: 'inserted', isFailed: false },
+      5: { status: 'inserted', isFailed: false },
+      6: { status: 'inserted', isFailed: false },
+      7: { status: 'inserted', isFailed: false },
+    },
+  },
 
   addHardware: (type, rackUnits) =>
     set((state) => {
@@ -394,11 +426,25 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
           break;
       }
 
+      let bays: Record<number, HddBayState> = {};
+      if (type === 'nas') {
+        for (let i = 0; i < 12; i++) {
+          bays[i] = { status: 'inserted', isFailed: false };
+        }
+      } else if (type === 'server') {
+        const bayCount = rackUnits * 4;
+        for (let i = 0; i < bayCount; i++) {
+          bays[i] = { status: 'inserted', isFailed: false };
+        }
+      }
+
+      const newId = generateId();
+
       return {
         installedHardware: [
           ...state.installedHardware,
           {
-            id: generateId(),
+            id: newId,
             type,
             rackUnits,
             powerDraw: defaultPowerDraw,
@@ -407,6 +453,10 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
             ports: generatePortsForDevice(type, defaultDepth),
           },
         ],
+        hddBays: {
+          ...state.hddBays,
+          [newId]: bays,
+        },
       };
     }),
 
@@ -414,12 +464,113 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
     set((state) => {
       const remainingCables = state.cables.filter((c) => c.fromDevice !== id && c.toDevice !== id);
       const isSelectedCableRemoved = state.selectedCableId && remainingCables.every(c => c.id !== state.selectedCableId);
+      
+      // Clean up HDD bays for the removed device
+      const nextHddBays = { ...state.hddBays };
+      delete nextHddBays[id];
+
       return {
         installedHardware: state.installedHardware.filter((h) => h.id !== id),
         cables: remainingCables,
+        hddBays: nextHddBays,
         selectedHardwareId:
           state.selectedHardwareId === id ? null : state.selectedHardwareId,
         selectedCableId: isSelectedCableRemoved ? null : state.selectedCableId,
+      };
+    }),
+
+  toggleHddBay: (deviceId, bayIndex) =>
+    set((state) => {
+      const deviceBays = state.hddBays[deviceId] || {};
+      const current = deviceBays[bayIndex] || { status: 'inserted', isFailed: false };
+      
+      let nextStatus = current.status;
+      if (current.status === 'inserted') {
+        nextStatus = 'extracted';
+      } else if (current.status === 'extracted') {
+        nextStatus = 'removed';
+      }
+
+      return {
+        hddBays: {
+          ...state.hddBays,
+          [deviceId]: {
+            ...deviceBays,
+            [bayIndex]: {
+              ...current,
+              status: nextStatus,
+            },
+          },
+        },
+      };
+    }),
+
+  removeHddFromBay: (deviceId, bayIndex) =>
+    set((state) => {
+      const deviceBays = state.hddBays[deviceId] || {};
+      const current = deviceBays[bayIndex] || { status: 'inserted', isFailed: false };
+      return {
+        hddBays: {
+          ...state.hddBays,
+          [deviceId]: {
+            ...deviceBays,
+            [bayIndex]: {
+              ...current,
+              status: 'removed',
+            },
+          },
+        },
+      };
+    }),
+
+  insertHddIntoBay: (deviceId, bayIndex) =>
+    set((state) => {
+      const deviceBays = state.hddBays[deviceId] || {};
+      return {
+        hddBays: {
+          ...state.hddBays,
+          [deviceId]: {
+            ...deviceBays,
+            [bayIndex]: {
+              status: 'inserted',
+              isFailed: false, // Set to healthy upon insertion
+            },
+          },
+        },
+      };
+    }),
+
+  simulateHddFailure: () =>
+    set((state) => {
+      const eligible = state.installedHardware.filter(
+        (h) => h.type === 'server' || h.type === 'nas'
+      );
+      if (eligible.length === 0) return {};
+
+      const randomDevice = eligible[Math.floor(Math.random() * eligible.length)];
+      const deviceBays = state.hddBays[randomDevice.id] || {};
+      const bayIndexes = Object.keys(deviceBays).map(Number);
+      if (bayIndexes.length === 0) return {};
+
+      // Only fail healthy inserted drives
+      const healthyInserted = bayIndexes.filter(
+        (idx) => deviceBays[idx].status === 'inserted' && !deviceBays[idx].isFailed
+      );
+      if (healthyInserted.length === 0) return {};
+
+      const failedIdx = healthyInserted[Math.floor(Math.random() * healthyInserted.length)];
+
+      return {
+        hddBays: {
+          ...state.hddBays,
+          [randomDevice.id]: {
+            ...deviceBays,
+            [failedIdx]: {
+              ...deviceBays[failedIdx],
+              isFailed: true,
+            },
+          },
+        },
       };
     }),
 

@@ -76,7 +76,16 @@ function SceneContents({ orbitRef }: SceneContentsProps) {
   const { camera } = useThree();
   const viewMode = useConfiguratorStore((s) => s.viewMode);
   const capacity = useConfiguratorStore((s) => s.capacity);
+  const simulateHddFailure = useConfiguratorStore((s) => s.simulateHddFailure);
   const isBlueprint = useIsBlueprint();
+
+  // Periodically simulate HDD disk failures
+  useEffect(() => {
+    const interval = setInterval(() => {
+      simulateHddFailure();
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [simulateHddFailure]);
 
   useEffect(() => {
     const controls = orbitRef.current;
