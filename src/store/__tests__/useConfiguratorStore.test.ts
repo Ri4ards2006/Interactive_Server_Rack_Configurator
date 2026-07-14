@@ -41,6 +41,7 @@ beforeEach(() => {
     installedHardware: [],
     cables: [],
     selectedHardwareId: null,
+    selectedCableId: null,
     viewMode: '3D',
   });
 });

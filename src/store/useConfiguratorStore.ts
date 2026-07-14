@@ -62,6 +62,12 @@ export interface ConfiguratorState extends RackState {
   /** ID of the hardware currently selected (clicked) by the user, if any. */
   selectedHardwareId: string | null;
 
+  /** ID of the cable currently selected, if any. */
+  selectedCableId: string | null;
+
+  /** Set / clear the active cable selection. */
+  selectCable: (id: string | null) => void;
+
   /**
    * Visual presentation mode for the canvas:
    *   - `'3D'`: realistic PBR rendering (default) — chassis show
@@ -141,9 +147,11 @@ const generateId = (): string =>
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 /**
- * Generates relative 3D port positions on the chassis front plate based on the device type.
+ * Generates relative 3D port positions on the chassis plate based on the device type.
+ * Server and NAS ports are positioned on the backplate (Z = 0.39 - depth).
+ * Network device ports are on the frontplate (Z = 0.39).
  */
-const generatePortsForDevice = (type: HardwareType): PortProps[] | undefined => {
+const generatePortsForDevice = (type: HardwareType, depth: number = 0.6): PortProps[] | undefined => {
   const ports: PortProps[] = [];
   
   if (type === 'switch') {
@@ -206,6 +214,38 @@ const generatePortsForDevice = (type: HardwareType): PortProps[] | undefined => 
     });
     return ports;
   }
+
+  if (type === 'router') {
+    const sfpRows = 1;
+    const SFP_COLS = 16;
+    const SFP_W = 0.009;
+    const SFP_GAP_X = 0.006;
+    const SFP_GAP_Y = 0.006;
+    const SFP_H = 0.009;
+    const chassisHeight = 1 * RACK_UNIT_HEIGHT - EDGE_GAP;
+    const totalSfpGridW = SFP_COLS * SFP_W + (SFP_COLS - 1) * SFP_GAP_X;
+    const totalSfpGridH = sfpRows * SFP_H + (sfpRows - 1) * SFP_GAP_Y;
+    const sfpStartX = CHASSIS_WIDTH / 2 - 0.025 - totalSfpGridW + SFP_W / 2;
+    const sfpStartY = -chassisHeight / 2 + totalSfpGridH / 2 + 0.01;
+    
+    let pIndex = 1;
+    for (let r = 0; r < sfpRows; r++) {
+      for (let c = 0; c < SFP_COLS; c++) {
+        ports.push({
+          id: `sfp-${pIndex}`,
+          label: `SFP+ ${pIndex}`,
+          position: [
+            sfpStartX + c * (SFP_W + SFP_GAP_X),
+            sfpStartY + r * (SFP_H + SFP_GAP_Y),
+            0.39 + 0.003 // Front plate bezel face
+          ],
+          cableId: null,
+        });
+        pIndex++;
+      }
+    }
+    return ports;
+  }
   
   if (type === 'server' || type === 'nas') {
     const serverPortsX = [-0.1, -0.06, 0.06, 0.1];
@@ -213,7 +253,8 @@ const generatePortsForDevice = (type: HardwareType): PortProps[] | undefined => 
       ports.push({
         id: `port-${idx + 1}`,
         label: `LAN ${idx + 1}`,
-        position: [x, -0.008, 0.39 + 0.002],
+        // Server ports sit at the back panel (Z = 0.39 - depth)
+        position: [x, -0.008, 0.39 - depth],
         cableId: null,
       });
     });
@@ -237,11 +278,11 @@ const generatePortsForDevice = (type: HardwareType): PortProps[] | undefined => 
 };
 
 // Seed default ports
-const defaultServerPorts = generatePortsForDevice('server')!;
+const defaultServerPorts = generatePortsForDevice('server', 0.6)!;
 defaultServerPorts.find(p => p.id === 'port-4')!.cableId = 'default-cable-1';
 defaultServerPorts.find(p => p.id === 'port-3')!.cableId = 'default-cable-2'; // port-3 is LAN 3
 
-const defaultSwitchPorts = generatePortsForDevice('switch')!;
+const defaultSwitchPorts = generatePortsForDevice('switch', 0.3)!;
 defaultSwitchPorts.find(p => p.id === 'port-1')!.cableId = 'default-cable-1';
 defaultSwitchPorts.find(p => p.id === 'port-12')!.cableId = 'default-cable-2';
 
@@ -286,6 +327,8 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
     },
   ],
   selectedHardwareId: null,
+  selectedCableId: null,
+  selectCable: (id) => set({ selectedCableId: id }),
   viewMode: '3D',
   activeDraggingCable: null,
 
@@ -361,19 +404,24 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
             powerDraw: defaultPowerDraw,
             depth: defaultDepth,
             position: [0, centerY, 0],
-            ports: generatePortsForDevice(type),
+            ports: generatePortsForDevice(type, defaultDepth),
           },
         ],
       };
     }),
 
   removeHardware: (id) =>
-    set((state) => ({
-      installedHardware: state.installedHardware.filter((h) => h.id !== id),
-      cables: state.cables.filter((c) => c.fromDevice !== id && c.toDevice !== id),
-      selectedHardwareId:
-        state.selectedHardwareId === id ? null : state.selectedHardwareId,
-    })),
+    set((state) => {
+      const remainingCables = state.cables.filter((c) => c.fromDevice !== id && c.toDevice !== id);
+      const isSelectedCableRemoved = state.selectedCableId && remainingCables.every(c => c.id !== state.selectedCableId);
+      return {
+        installedHardware: state.installedHardware.filter((h) => h.id !== id),
+        cables: remainingCables,
+        selectedHardwareId:
+          state.selectedHardwareId === id ? null : state.selectedHardwareId,
+        selectedCableId: isSelectedCableRemoved ? null : state.selectedCableId,
+      };
+    }),
 
   addCable: (fromDevice, fromPort, toDevice, toPort, color) =>
     set((state) => {
@@ -412,6 +460,7 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       if (!targetCable) return {};
       return {
         cables: state.cables.filter((c) => c.id !== id),
+        selectedCableId: state.selectedCableId === id ? null : state.selectedCableId,
         installedHardware: state.installedHardware.map((h) => {
           if (h.id === targetCable.fromDevice || h.id === targetCable.toDevice) {
             return {
@@ -439,6 +488,7 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
 
       return {
         cables: state.cables.filter((c) => c.id !== cableId),
+        selectedCableId: state.selectedCableId === cableId ? null : state.selectedCableId,
         installedHardware: state.installedHardware.map((h) => {
           if (h.id === targetCable.fromDevice || h.id === targetCable.toDevice) {
             return {
