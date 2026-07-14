@@ -18,8 +18,263 @@ import { useConfiguratorStore, RACK_UNIT_HEIGHT } from '../../store/useConfigura
 import type { HardwareProps, HardwareType } from '../../types/rack.types';
 import { checkDropValidity } from '../../utils/rackLayout';
 
+interface CatalogItem {
+  type: HardwareType;
+  rackUnits: number;
+  name: string;
+  category: 'compute' | 'networking' | 'storage' | 'airflow' | 'auxiliary';
+  svg: React.ReactNode;
+}
+
+const categories = [
+  { id: 'compute', label: 'COMPUTE' },
+  { id: 'networking', label: 'NETWORKING' },
+  { id: 'storage', label: 'STORAGE' },
+  { id: 'airflow', label: 'AIRFLOW & CABLE MNG' },
+  { id: 'auxiliary', label: 'AUXILIARY' }
+] as const;
+
+const catalogItems: CatalogItem[] = [
+  {
+    type: 'server',
+    rackUnits: 1,
+    name: 'Server 1U',
+    category: 'compute',
+    svg: (
+      <svg className="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="5" width="20" height="6" rx="1" />
+        <line x1="6" y1="8" x2="8" y2="8" strokeLinecap="round" />
+        <circle cx="16" cy="8" r="0.75" fill="currentColor" />
+        <circle cx="18" cy="8" r="0.75" fill="currentColor" />
+      </svg>
+    )
+  },
+  {
+    type: 'server',
+    rackUnits: 2,
+    name: 'Server 2U',
+    category: 'compute',
+    svg: (
+      <svg className="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="5" width="20" height="6" rx="1" />
+        <line x1="6" y1="8" x2="8" y2="8" strokeLinecap="round" />
+        <rect x="2" y="13" width="20" height="6" rx="1" />
+        <line x1="6" y1="16" x2="8" y2="16" strokeLinecap="round" />
+      </svg>
+    )
+  },
+  {
+    type: 'server',
+    rackUnits: 4,
+    name: 'Server 4U',
+    category: 'compute',
+    svg: (
+      <svg className="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="2" width="20" height="20" rx="1" />
+        <line x1="6" y1="6" x2="8" y2="6" strokeLinecap="round" />
+        <line x1="6" y1="12" x2="8" y2="12" strokeLinecap="round" />
+        <line x1="6" y1="18" x2="8" y2="18" strokeLinecap="round" />
+      </svg>
+    )
+  },
+  {
+    type: 'switch',
+    rackUnits: 1,
+    name: 'Switch.Net 1U',
+    category: 'networking',
+    svg: (
+      <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="6" width="20" height="12" rx="1" />
+        <rect x="5" y="9" width="2" height="2" />
+        <rect x="9" y="9" width="2" height="2" />
+        <rect x="13" y="9" width="2" height="2" />
+        <rect x="17" y="9" width="2" height="2" />
+        <rect x="5" y="13" width="2" height="2" />
+        <rect x="9" y="13" width="2" height="2" />
+        <rect x="13" y="13" width="2" height="2" />
+        <rect x="17" y="13" width="2" height="2" />
+      </svg>
+    )
+  },
+  {
+    type: 'router',
+    rackUnits: 1,
+    name: 'Core-Rtr.1 1U',
+    category: 'networking',
+    svg: (
+      <svg className="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="6" width="20" height="12" rx="1" />
+        <circle cx="6" cy="12" r="1.5" />
+        <line x1="10" y1="12" x2="20" y2="12" />
+        <circle cx="14" cy="12" r="1" />
+        <circle cx="18" cy="12" r="1" />
+      </svg>
+    )
+  },
+  {
+    type: 'router',
+    rackUnits: 2,
+    name: 'Core-Rtr.2 2U',
+    category: 'networking',
+    svg: (
+      <svg className="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="4" width="20" height="16" rx="1" />
+        <line x1="12" y1="4" x2="12" y2="20" />
+        <circle cx="6" cy="12" r="2" />
+        <circle cx="18" cy="12" r="2" />
+      </svg>
+    )
+  },
+  {
+    type: 'patch-panel',
+    rackUnits: 1,
+    name: 'Cable-Mng.P 1U',
+    category: 'networking',
+    svg: (
+      <svg className="w-4 h-4 text-violet-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="6" width="20" height="12" rx="1" />
+        <circle cx="5" cy="12" r="1" />
+        <circle cx="8" cy="12" r="1" />
+        <circle cx="11" cy="12" r="1" />
+        <circle cx="14" cy="12" r="1" />
+        <circle cx="17" cy="12" r="1" />
+        <circle cx="20" cy="12" r="1" />
+      </svg>
+    )
+  },
+  {
+    type: 'firewall',
+    rackUnits: 1,
+    name: 'Firewall Appliance 1U',
+    category: 'networking',
+    svg: (
+      <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="6" width="20" height="12" rx="1" />
+        <circle cx="6" cy="12" r="1.5" />
+        <line x1="10" y1="10" x2="12" y2="10" />
+        <line x1="10" y1="14" x2="12" y2="14" />
+        <rect x="15" y="9" width="4" height="6" />
+      </svg>
+    )
+  },
+  {
+    type: 'jbod',
+    rackUnits: 4,
+    name: 'JBOD Storage 4U',
+    category: 'storage',
+    svg: (
+      <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="2" width="20" height="20" rx="1" />
+        <line x1="2" y1="8" x2="22" y2="8" />
+        <line x1="2" y1="14" x2="22" y2="14" />
+        <circle cx="6" cy="5" r="1.5" />
+        <circle cx="18" cy="5" r="1.5" />
+        <circle cx="6" cy="11" r="1.5" />
+        <circle cx="18" cy="11" r="1.5" />
+        <circle cx="6" cy="17" r="1.5" />
+        <circle cx="18" cy="17" r="1.5" />
+      </svg>
+    )
+  },
+  {
+    type: 'nas',
+    rackUnits: 2,
+    name: 'NAS Storage 2U',
+    category: 'storage',
+    svg: (
+      <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="4" width="20" height="16" rx="1" />
+        <rect x="5" y="8" width="6" height="8" />
+        <circle cx="16" cy="10" r="1" />
+        <circle cx="18" cy="10" r="1" />
+      </svg>
+    )
+  },
+  {
+    type: 'blank',
+    rackUnits: 1,
+    name: 'Blanking Panel 1U',
+    category: 'airflow',
+    svg: (
+      <svg className="w-4 h-4 text-zinc-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="6" width="20" height="12" rx="1" />
+        <line x1="4" y1="12" x2="6" y2="12" />
+        <line x1="18" y1="12" x2="20" y2="12" />
+      </svg>
+    )
+  },
+  {
+    type: 'blank',
+    rackUnits: 2,
+    name: 'Blanking Panel 2U',
+    category: 'airflow',
+    svg: (
+      <svg className="w-4 h-4 text-zinc-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="4" width="20" height="16" rx="1" />
+        <line x1="4" y1="12" x2="6" y2="12" />
+        <line x1="18" y1="12" x2="20" y2="12" />
+      </svg>
+    )
+  },
+  {
+    type: 'brush',
+    rackUnits: 1,
+    name: 'Cable Brush Panel 1U',
+    category: 'airflow',
+    svg: (
+      <svg className="w-4 h-4 text-zinc-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="6" width="20" height="12" rx="1" />
+        <line x1="4" y1="12" x2="20" y2="12" strokeDasharray="2, 2" />
+      </svg>
+    )
+  },
+  {
+    type: 'cable-manager',
+    rackUnits: 2,
+    name: 'Cable Management 2U',
+    category: 'airflow',
+    svg: (
+      <svg className="w-4 h-4 text-violet-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="4" width="20" height="16" rx="1" />
+        <line x1="6" y1="8" x2="18" y2="8" />
+        <line x1="6" y1="12" x2="18" y2="12" />
+        <line x1="6" y1="16" x2="18" y2="16" />
+        <line x1="9" y1="6" x2="9" y2="18" />
+        <line x1="15" y1="6" x2="15" y2="18" />
+      </svg>
+    )
+  },
+  {
+    type: 'ups',
+    rackUnits: 2,
+    name: 'UPS Power Backup 2U',
+    category: 'auxiliary',
+    svg: (
+      <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="4" width="20" height="16" rx="1" />
+        <rect x="5" y="8" width="6" height="4" />
+        <circle cx="16" cy="10" r="1.5" />
+      </svg>
+    )
+  },
+  {
+    type: 'kvm',
+    rackUnits: 1,
+    name: 'KVM Drawer 1U',
+    category: 'auxiliary',
+    svg: (
+      <svg className="w-4 h-4 text-teal-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+        <rect x="2" y="6" width="20" height="12" rx="1" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+        <rect x="7" y="8" width="10" height="2" />
+      </svg>
+    )
+  }
+];
+
 export function ConfiguratorPanel() {
   const [isZen, setIsZen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Array → useShallow so a fresh reference but identical contents does
   // NOT re-render the panel.
@@ -130,7 +385,7 @@ export function ConfiguratorPanel() {
       {/* LEFT SIDEBAR: Configurator, Mode, Specs, Hardware Catalog         */}
       {/* ----------------------------------------------------------------- */}
       <aside
-        className={`fixed top-4 left-4 bottom-4 w-96 flex flex-col border border-zinc-800/60 bg-zinc-950/80 backdrop-blur-md p-6 overflow-y-auto z-40 pointer-events-auto rounded-lg transition-all duration-300 ${
+        className={`fixed top-4 left-4 bottom-4 w-96 flex flex-col border border-zinc-800/60 bg-zinc-950/80 backdrop-blur-md p-6 overflow-y-auto z-40 pointer-events-auto rounded-lg transition-all duration-300 custom-scrollbar ${
           isZen ? 'opacity-0 -translate-x-12 pointer-events-none' : 'opacity-100 translate-x-0'
         }`}
       >
@@ -147,6 +402,29 @@ export function ConfiguratorPanel() {
           <div className="flex items-center gap-1.5 font-mono text-[9px] text-emerald-400 border border-emerald-500/20 bg-emerald-500/5 px-2 py-0.5 rounded">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
             <span>ONLINE</span>
+          </div>
+        </div>
+
+        {/* Terminal-Style Search Bar */}
+        <div className="py-3 border-b border-zinc-800/60">
+          <div className="relative flex items-center bg-zinc-950 border border-zinc-850 rounded overflow-hidden focus-within:border-cyan-500/80 focus-within:shadow-[0_0_8px_rgba(6,182,212,0.15)] transition-all duration-200">
+            <span className="pl-3 font-mono text-cyan-500/70 text-xs select-none pr-1.5">&gt;</span>
+            <input
+              type="text"
+              placeholder="SEARCH_HARDWARE..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-transparent py-2 pr-3 text-xs font-mono text-zinc-100 placeholder-zinc-650 focus:outline-none"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 px-1.5 py-0.5 bg-zinc-900 border border-zinc-800 text-[8px] font-mono text-zinc-500 hover:text-zinc-300 focus:outline-none rounded"
+              >
+                ESC
+              </button>
+            )}
           </div>
         </div>
 
@@ -269,264 +547,48 @@ export function ConfiguratorPanel() {
 
         {/* Add hardware catalog */}
         <div className="py-4 flex flex-col gap-4">
-          <div>
-            <label className="text-[9px] uppercase tracking-wider text-zinc-500 block mb-2">
-              [ INJECT COMPUTE ]
-            </label>
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => addHardware('server', 1)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="5" width="20" height="6" rx="1" />
-                  <line x1="6" y1="8" x2="8" y2="8" strokeLinecap="round" />
-                  <circle cx="16" cy="8" r="0.75" fill="currentColor" />
-                  <circle cx="18" cy="8" r="0.75" fill="currentColor" />
-                </svg>
-                <span>SERVER 1U</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => addHardware('server', 2)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="5" width="20" height="6" rx="1" />
-                  <line x1="6" y1="8" x2="8" y2="8" strokeLinecap="round" />
-                  <rect x="2" y="13" width="20" height="6" rx="1" />
-                  <line x1="6" y1="16" x2="8" y2="16" strokeLinecap="round" />
-                </svg>
-                <span>SERVER 2U</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => addHardware('server', 4)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="2" width="20" height="20" rx="1" />
-                  <line x1="6" y1="6" x2="8" y2="6" strokeLinecap="round" />
-                  <line x1="6" y1="12" x2="8" y2="12" strokeLinecap="round" />
-                  <line x1="6" y1="18" x2="8" y2="18" strokeLinecap="round" />
-                </svg>
-                <span>SERVER 4U</span>
-              </button>
-            </div>
-          </div>
+          {(() => {
+            const q = searchQuery.toLowerCase().trim();
+            const filtered = catalogItems.filter((item) =>
+              item.name.toLowerCase().includes(q) ||
+              item.type.toLowerCase().includes(q)
+            );
 
-          <div>
-            <label className="text-[9px] uppercase tracking-wider text-zinc-500 block mb-2">
-              [ INJECT NETWORKING ]
-            </label>
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => addHardware('switch', 1)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="6" width="20" height="12" rx="1" />
-                  <rect x="5" y="9" width="2" height="2" />
-                  <rect x="9" y="9" width="2" height="2" />
-                  <rect x="13" y="9" width="2" height="2" />
-                  <rect x="17" y="9" width="2" height="2" />
-                  <rect x="5" y="13" width="2" height="2" />
-                  <rect x="9" y="13" width="2" height="2" />
-                  <rect x="13" y="13" width="2" height="2" />
-                  <rect x="17" y="13" width="2" height="2" />
-                </svg>
-                <span>SWITCH.NET 1U</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => addHardware('router', 1)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="6" width="20" height="12" rx="1" />
-                  <circle cx="6" cy="12" r="1.5" />
-                  <line x1="10" y1="12" x2="20" y2="12" />
-                  <circle cx="14" cy="12" r="1" />
-                  <circle cx="18" cy="12" r="1" />
-                </svg>
-                <span>CORE-RTR.1 1U</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => addHardware('router', 2)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="4" width="20" height="16" rx="1" />
-                  <line x1="12" y1="4" x2="12" y2="20" />
-                  <circle cx="6" cy="12" r="2" />
-                  <circle cx="18" cy="12" r="2" />
-                </svg>
-                <span>CORE-RTR.2 2U</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => addHardware('patch-panel', 1)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-violet-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="6" width="20" height="12" rx="1" />
-                  <circle cx="5" cy="12" r="1" />
-                  <circle cx="8" cy="12" r="1" />
-                  <circle cx="11" cy="12" r="1" />
-                  <circle cx="14" cy="12" r="1" />
-                  <circle cx="17" cy="12" r="1" />
-                  <circle cx="20" cy="12" r="1" />
-                </svg>
-                <span>CABLE-MNG.P 1U</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => addHardware('firewall', 1)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-red-500 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="6" width="20" height="12" rx="1" />
-                  <circle cx="6" cy="12" r="1.5" />
-                  <line x1="10" y1="10" x2="12" y2="10" />
-                  <line x1="10" y1="14" x2="12" y2="14" />
-                  <rect x="15" y="9" width="4" height="6" />
-                </svg>
-                <span>FIREWALL APPLIANCE 1U</span>
-              </button>
-            </div>
-          </div>
+            if (filtered.length === 0) {
+              return (
+                <div className="rounded border border-dashed border-zinc-800/60 px-3 py-10 text-center font-mono text-[10px] text-zinc-600 flex flex-col justify-center select-none uppercase">
+                  <span>NO MATCHING HARDWARE</span>
+                  <span className="text-[8px] text-zinc-700 mt-1">TRY ANOTHER QUERY</span>
+                </div>
+              );
+            }
 
-          <div>
-            <label className="text-[9px] uppercase tracking-wider text-zinc-500 block mb-2">
-              [ INJECT AUXILIARY ]
-            </label>
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => addHardware('ups', 2)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="4" width="20" height="16" rx="1" />
-                  <rect x="5" y="8" width="6" height="4" />
-                  <circle cx="16" cy="10" r="1.5" />
-                </svg>
-                <span>UPS POWER BACKUP 2U</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => addHardware('kvm', 1)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-teal-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="6" width="20" height="12" rx="1" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                  <rect x="7" y="8" width="10" height="2" />
-                </svg>
-                <span>KVM DRAWER 1U</span>
-              </button>
-            </div>
-          </div>
+            return categories.map((cat) => {
+              const catItems = filtered.filter((item) => item.category === cat.id);
+              if (catItems.length === 0) return null;
 
-          <div>
-            <label className="text-[9px] uppercase tracking-wider text-zinc-500 block mb-2">
-              [ INJECT STORAGE ]
-            </label>
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => addHardware('jbod', 4)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="2" width="20" height="20" rx="1" />
-                  <line x1="2" y1="8" x2="22" y2="8" />
-                  <line x1="2" y1="14" x2="22" y2="14" />
-                  <circle cx="6" cy="5" r="1.5" />
-                  <circle cx="18" cy="5" r="1.5" />
-                  <circle cx="6" cy="11" r="1.5" />
-                  <circle cx="18" cy="11" r="1.5" />
-                  <circle cx="6" cy="17" r="1.5" />
-                  <circle cx="18" cy="17" r="1.5" />
-                </svg>
-                <span>JBOD STORAGE 4U</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => addHardware('nas', 2)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-indigo-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="4" width="20" height="16" rx="1" />
-                  <rect x="5" y="8" width="6" height="8" />
-                  <circle cx="16" cy="10" r="1" />
-                  <circle cx="18" cy="10" r="1" />
-                </svg>
-                <span>NAS STORAGE 2U</span>
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-[9px] uppercase tracking-wider text-zinc-500 block mb-2">
-              [ INJECT AIRFLOW ]
-            </label>
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={() => addHardware('blank', 1)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-zinc-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="6" width="20" height="12" rx="1" />
-                  <line x1="4" y1="12" x2="6" y2="12" />
-                  <line x1="18" y1="12" x2="20" y2="12" />
-                </svg>
-                <span>BLANKING PANEL 1U</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => addHardware('blank', 2)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-zinc-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="4" width="20" height="16" rx="1" />
-                  <line x1="4" y1="12" x2="6" y2="12" />
-                  <line x1="18" y1="12" x2="20" y2="12" />
-                </svg>
-                <span>BLANKING PANEL 2U</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => addHardware('brush', 1)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-zinc-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="6" width="20" height="12" rx="1" />
-                  <line x1="4" y1="12" x2="20" y2="12" strokeDasharray="2, 2" />
-                </svg>
-                <span>CABLE BRUSH PANEL 1U</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => addHardware('cable-manager', 2)}
-                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
-              >
-                <svg className="w-4 h-4 text-violet-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-                  <rect x="2" y="4" width="20" height="16" rx="1" />
-                  <line x1="6" y1="8" x2="18" y2="8" />
-                  <line x1="6" y1="12" x2="18" y2="12" />
-                  <line x1="6" y1="16" x2="18" y2="16" />
-                  <line x1="9" y1="6" x2="9" y2="18" />
-                  <line x1="15" y1="6" x2="15" y2="18" />
-                </svg>
-                <span>CABLE MANAGEMENT 2U</span>
-              </button>
-            </div>
-          </div>
+              return (
+                <div key={cat.id} className="flex flex-col gap-2">
+                  <label className="text-[9px] uppercase tracking-wider text-zinc-500 block">
+                    [ INJECT {cat.label} ]
+                  </label>
+                  <div className="flex flex-col gap-2">
+                    {catItems.map((item, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => addHardware(item.type, item.rackUnits)}
+                        className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full tech-card-hover"
+                      >
+                        {item.svg}
+                        <span>{item.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </div>
 
         {/* Footer */}
@@ -539,7 +601,7 @@ export function ConfiguratorPanel() {
       {/* RIGHT SIDEBAR: Hardware Inventory & Sleek Inspector               */}
       {/* ----------------------------------------------------------------- */}
       <aside
-        className={`fixed top-4 right-4 bottom-4 w-80 flex flex-col border border-zinc-800/60 bg-zinc-950/88 backdrop-blur-md p-6 overflow-y-auto z-40 pointer-events-auto rounded-lg transition-all duration-300 ${
+        className={`fixed top-4 right-4 bottom-4 w-80 flex flex-col border border-zinc-800/60 bg-zinc-950/88 backdrop-blur-md p-6 overflow-y-auto z-40 pointer-events-auto rounded-lg transition-all duration-300 custom-scrollbar ${
           isZen ? 'opacity-0 translate-x-12 pointer-events-none' : 'opacity-100 translate-x-0'
         }`}
       >
@@ -574,10 +636,10 @@ export function ConfiguratorPanel() {
                 <div
                   key={h.id}
                   onClick={() => selectHardware(isItemLocallySelected ? null : h.id)}
-                  className={`group flex flex-col p-2.5 rounded border cursor-pointer transition-all relative ${
+                  className={`group flex flex-col p-2.5 rounded border cursor-pointer transition-all relative tech-card-hover ${
                     isItemLocallySelected
-                      ? 'border-cyan-500 bg-cyan-950/20 shadow-[0_0_15px_rgba(6,182,212,0.15)]'
-                      : 'border-zinc-800/60 bg-zinc-950/40 hover:border-zinc-750 hover:bg-zinc-900/40'
+                      ? 'tech-card-active'
+                      : 'border-zinc-800/60 bg-zinc-950/40'
                   }`}
                 >
                   <div className="flex items-center justify-between">
