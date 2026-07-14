@@ -1,12 +1,16 @@
 /**
  * Firewall.tsx
  *
- * 1U Enterprise Security Appliance (Firewall) chassis.
- * Features a bold red/dark polymer bezel, 8 RJ45 gigabit copper ports,
- * 4 SFP+ cage sockets, console interface, and status LEDs.
+ * 1U Next-Generation Firewall (NGFW) Security Gateway.
+ * Rebuilt with high-fidelity detailing and aggressive styling:
+ * - Aggressive red/dark polymer split bezel with diagonal vent grille styling.
+ * - SFP+ cages designed as hollow metal cavities with dark recesses.
+ * - RJ45 copper ports with tiny integrated indicator lights.
+ * - Multi-segment status LED cluster (Power, HA, Status, Alarm, WAN, LAN) with glowing emissives.
  */
 
-import { useLayoutEffect, useRef } from 'react';
+import { useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
   RACK_UNIT_HEIGHT,
@@ -24,58 +28,55 @@ import {
   RackMountDetails,
 } from './shared';
 
-// ---- Geometry constants ---------------------------------------------
-const COPPER_PORT_COUNT = 8;
-const SFP_PORT_COUNT = 4;
-const PORT_W = 0.01;
-const PORT_H = 0.008;
-const PORT_GAP = 0.004;
-
-// ---- PBR Materials --------------------------------------------------
+// ---- Materials ------------------------------------------------------
 const chassisMaterial = new THREE.MeshStandardMaterial({
   color: '#1a1a1c',
-  metalness: 0.5,
-  roughness: 0.6,
+  metalness: 0.6,
+  roughness: 0.55,
 });
 
-const redBezelMaterial = new THREE.MeshStandardMaterial({
-  color: '#b91c1c', // striking anodized deep red
-  metalness: 0.75,
+const darkBezelMaterial = new THREE.MeshStandardMaterial({
+  color: '#080809',
+  metalness: 0.8,
   roughness: 0.35,
 });
 
-const portMaterial = new THREE.MeshStandardMaterial({
-  color: '#5b5d63',
+const redBezelMaterial = new THREE.MeshStandardMaterial({
+  color: '#991b1b', // Anodized aggressive deep red
   metalness: 0.8,
   roughness: 0.3,
 });
 
-const portHoleMaterial = new THREE.MeshBasicMaterial({
-  color: '#020202',
+const metalPortFrameMaterial = new THREE.MeshStandardMaterial({
+  color: '#71717a', // Metallic port housing
+  metalness: 0.95,
+  roughness: 0.15,
 });
 
-const sfpMaterial = new THREE.MeshStandardMaterial({
-  color: '#cbd5e1',
-  metalness: 0.9,
-  roughness: 0.25,
+const darkPortRecessMaterial = new THREE.MeshBasicMaterial({
+  color: '#020202', // Black inner hollow area
 });
 
-const ledGreenMaterial = new THREE.MeshBasicMaterial({
+const sfpCageMaterial = new THREE.MeshStandardMaterial({
+  color: '#d4d4d8', // Shiny silver metal for SFP+ cages
+  metalness: 0.95,
+  roughness: 0.1,
+});
+
+const sfpLedGreen = new THREE.MeshStandardMaterial({
   color: '#10b981',
-  toneMapped: false,
+  emissive: '#10b981',
+  emissiveIntensity: 1.2,
 });
 
-const ledAmberMaterial = new THREE.MeshBasicMaterial({
-  color: '#f59e0b',
-  toneMapped: false,
+const sfpLedYellow = new THREE.MeshStandardMaterial({
+  color: '#eab308',
+  emissive: '#eab308',
+  emissiveIntensity: 1.0,
 });
 
 const blueprintRedMaterial = new THREE.MeshBasicMaterial({
   color: '#7f1d1d', // flat deep red for blueprints
-});
-
-const blueprintPortMaterial = new THREE.MeshBasicMaterial({
-  color: '#94a3b8',
 });
 
 interface FirewallProps {
@@ -83,9 +84,6 @@ interface FirewallProps {
 }
 
 export function Firewall({ hardware }: FirewallProps) {
-  const copperPortRef = useRef<THREE.InstancedMesh>(null);
-  const sfpRef = useRef<THREE.InstancedMesh>(null);
-
   const RACK_UNITS = 1;
   const DEPTH = 0.3;
 
@@ -99,48 +97,23 @@ export function Firewall({ hardware }: FirewallProps) {
   const chassisHeight = RACK_UNITS * RACK_UNIT_HEIGHT - EDGE_GAP;
   const zShift = 0.39 - DEPTH / 2;
 
-  // Horizontal placements on the front bezel
-  const portDepthOffset = 0.39 + 0.002;
-  const startX = -0.08; // centered grouping on the bezel
+  // Front bezel coordinates
+  const bezelFrontZ = 0.39 + 0.003;
 
-  // -- Seed RJ45 Copper ports ------------------------------------------
-  useLayoutEffect(() => {
-    const mesh = copperPortRef.current;
-    if (!mesh) return;
-    const dummy = new THREE.Object3D();
-    for (let i = 0; i < COPPER_PORT_COUNT; i++) {
-      dummy.position.set(
-        startX + i * (PORT_W + PORT_GAP),
-        -0.002,
-        portDepthOffset,
-      );
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-    }
-    mesh.count = COPPER_PORT_COUNT;
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-  }, [startX, portDepthOffset]);
+  // Port and SFP arrays for clean rendering
+  const copperPorts = [
+    { id: 1, x: -0.06 }, { id: 2, x: -0.046 },
+    { id: 3, x: -0.032 }, { id: 4, x: -0.018 },
+    { id: 5, x: 0.002 }, { id: 6, x: 0.016 },
+    { id: 7, x: 0.030 }, { id: 8, x: 0.044 }
+  ];
 
-  // -- Seed SFP+ ports ------------------------------------------------
-  useLayoutEffect(() => {
-    const mesh = sfpRef.current;
-    if (!mesh) return;
-    const dummy = new THREE.Object3D();
-    const sfpStartX = startX + COPPER_PORT_COUNT * (PORT_W + PORT_GAP) + 0.02;
-    for (let i = 0; i < SFP_PORT_COUNT; i++) {
-      dummy.position.set(
-        sfpStartX + i * (0.012 + PORT_GAP),
-        -0.002,
-        portDepthOffset,
-      );
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
-    }
-    mesh.count = SFP_PORT_COUNT;
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-  }, [startX, portDepthOffset]);
+  const sfpPorts = [
+    { id: 1, x: 0.076 },
+    { id: 2, x: 0.092 },
+    { id: 3, x: 0.108 },
+    { id: 4, x: 0.124 }
+  ];
 
   return (
     <group
@@ -173,10 +146,10 @@ export function Firewall({ hardware }: FirewallProps) {
         />
       )}
 
-      {/* Front Bezel - striking red styling */}
+      {/* Front Bezel Base (Dark carbon/zinc background) */}
       <mesh
         position={[0, 0, 0.39 + 0.0015]}
-        material={isBlueprint ? blueprintRedMaterial : redBezelMaterial}
+        material={isBlueprint ? blueprintBezelMaterial : darkBezelMaterial}
       >
         <boxGeometry args={[CHASSIS_WIDTH - 0.02, chassisHeight, 0.003]} />
       </mesh>
@@ -189,43 +162,187 @@ export function Firewall({ hardware }: FirewallProps) {
         />
       )}
 
-      {/* Copper RJ45 ports */}
-      <instancedMesh
-        ref={copperPortRef}
-        args={[undefined, undefined, COPPER_PORT_COUNT]}
-        material={isBlueprint ? blueprintPortMaterial : portMaterial}
-        castShadow={false}
-      >
-        <boxGeometry args={[PORT_W, PORT_H, 0.0015]} />
-      </instancedMesh>
-
-      {/* SFP+ cages */}
-      <instancedMesh
-        ref={sfpRef}
-        args={[undefined, undefined, SFP_PORT_COUNT]}
-        material={isBlueprint ? blueprintPortMaterial : sfpMaterial}
-        castShadow={false}
-      >
-        <boxGeometry args={[0.012, 0.01, 0.0015]} />
-      </instancedMesh>
-
-      {/* Local Console port & LEDs details */}
+      {/* Aggressive Red Accents (V-shape or angled side panels on the front bezel) */}
       {!isBlueprint && (
-        <group position={[0.13, -0.002, portDepthOffset + 0.0005]}>
-          {/* Console RJ45 */}
-          <mesh material={portMaterial}>
-            <boxGeometry args={[PORT_W, PORT_H, 0.001]} />
+        <group position={[0, 0, 0.39 + 0.002]}>
+          {/* Left Red wing */}
+          <mesh position={[-0.175, 0, 0.001]} castShadow>
+            <boxGeometry args={[0.06, chassisHeight - 0.006, 0.002]} />
+            <meshStandardMaterial {...redBezelMaterial} />
           </mesh>
-          <mesh position={[0, 0, 0.0006]} material={portHoleMaterial}>
-            <boxGeometry args={[PORT_W - 0.004, PORT_H - 0.004, 0.0002]} />
+          {/* Right Red wing */}
+          <mesh position={[0.175, 0, 0.001]} castShadow>
+            <boxGeometry args={[0.06, chassisHeight - 0.006, 0.002]} />
+            <meshStandardMaterial {...redBezelMaterial} />
           </mesh>
-          {/* Status LEDs */}
-          <mesh position={[-0.23, 0.008, 0]} material={ledGreenMaterial}>
-            <sphereGeometry args={[0.002, 8, 8]} />
-          </mesh>
-          <mesh position={[-0.22, 0.008, 0]} material={ledAmberMaterial}>
-            <sphereGeometry args={[0.002, 8, 8]} />
-          </mesh>
+
+          {/* Aggressive ventilation vents (dark slashes on red wings) */}
+          <group position={[-0.175, 0, 0.0022]}>
+            <mesh rotation={[0, 0, Math.PI / 4]}>
+              <boxGeometry args={[0.015, 0.002, 0.0005]} />
+              <meshBasicMaterial color="#020202" />
+            </mesh>
+            <mesh position={[0, 0.008, 0]} rotation={[0, 0, Math.PI / 4]}>
+              <boxGeometry args={[0.015, 0.002, 0.0005]} />
+              <meshBasicMaterial color="#020202" />
+            </mesh>
+            <mesh position={[0, -0.008, 0]} rotation={[0, 0, Math.PI / 4]}>
+              <boxGeometry args={[0.015, 0.002, 0.0005]} />
+              <meshBasicMaterial color="#020202" />
+            </mesh>
+          </group>
+
+          <group position={[0.175, 0, 0.0022]}>
+            <mesh rotation={[0, 0, -Math.PI / 4]}>
+              <boxGeometry args={[0.015, 0.002, 0.0005]} />
+              <meshBasicMaterial color="#020202" />
+            </mesh>
+            <mesh position={[0, 0.008, 0]} rotation={[0, 0, -Math.PI / 4]}>
+              <boxGeometry args={[0.015, 0.002, 0.0005]} />
+              <meshBasicMaterial color="#020202" />
+            </mesh>
+            <mesh position={[0, -0.008, 0]} rotation={[0, 0, -Math.PI / 4]}>
+              <boxGeometry args={[0.015, 0.002, 0.0005]} />
+              <meshBasicMaterial color="#020202" />
+            </mesh>
+          </group>
+        </group>
+      )}
+
+      {isBlueprint && (
+        <mesh position={[-0.175, 0, 0.39 + 0.002]}>
+          <boxGeometry args={[0.06, chassisHeight - 0.006, 0.002]} />
+          <meshBasicMaterial color="#7f1d1d" />
+        </mesh>
+      )}
+      {isBlueprint && (
+        <mesh position={[0.175, 0, 0.39 + 0.002]}>
+          <boxGeometry args={[0.06, chassisHeight - 0.006, 0.002]} />
+          <meshBasicMaterial color="#7f1d1d" />
+        </mesh>
+      )}
+
+      {/* Front Panel Details (Ports, LEDs) */}
+      {!isBlueprint && (
+        <group position={[0, 0, bezelFrontZ]}>
+          
+          {/* Section 1: Detailed Status LED Cluster (Left bezel area) */}
+          <group position={[-0.125, 0, 0.001]}>
+            {/* Status Panel Label Background */}
+            <mesh>
+              <boxGeometry args={[0.035, chassisHeight - 0.012, 0.001]} />
+              <meshStandardMaterial color="#0c0c0e" metalness={0.7} roughness={0.3} />
+            </mesh>
+
+            {/* PWR LED (Green) */}
+            <mesh position={[-0.01, 0.012, 0.0008]}>
+              <sphereGeometry args={[0.0015, 8, 8]} />
+              <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={1.2} />
+            </mesh>
+            {/* HA Status LED (Yellow) */}
+            <mesh position={[-0.01, 0.004, 0.0008]}>
+              <sphereGeometry args={[0.0015, 8, 8]} />
+              <meshStandardMaterial color="#eab308" emissive="#eab308" emissiveIntensity={1.0} />
+            </mesh>
+            {/* Status/Active LED (Green) */}
+            <mesh position={[-0.01, -0.004, 0.0008]}>
+              <sphereGeometry args={[0.0015, 8, 8]} />
+              <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={0.8} />
+            </mesh>
+            {/* ALARM LED (Aggressive Blinking Red) */}
+            <AlarmLED />
+            
+            {/* Right column of LEDs in cluster */}
+            {/* WAN LED (Blue) */}
+            <mesh position={[0.008, 0.012, 0.0008]}>
+              <sphereGeometry args={[0.0015, 8, 8]} />
+              <meshStandardMaterial color="#0284c7" emissive="#0284c7" emissiveIntensity={1.0} />
+            </mesh>
+            {/* LAN LED (Green) */}
+            <mesh position={[0.008, 0.004, 0.0008]}>
+              <sphereGeometry args={[0.0015, 8, 8]} />
+              <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={0.8} />
+            </mesh>
+            {/* SFP+ Active LED (Green) */}
+            <mesh position={[0.008, -0.004, 0.0008]}>
+              <sphereGeometry args={[0.0015, 8, 8]} />
+              <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={0.8} />
+            </mesh>
+            {/* VPN Link LED (Green) */}
+            <mesh position={[0.008, -0.012, 0.0008]}>
+              <sphereGeometry args={[0.0015, 8, 8]} />
+              <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={0.8} />
+            </mesh>
+          </group>
+
+          {/* Section 2: Copper RJ45 ports (Center region) */}
+          <group position={[-0.01, -0.002, 0.0015]}>
+            {copperPorts.map((port) => (
+              <group key={port.id} position={[port.x, 0, 0]}>
+                {/* Port metallic outer housing */}
+                <mesh castShadow>
+                  <boxGeometry args={[0.011, 0.009, 0.003]} />
+                  <meshStandardMaterial {...metalPortFrameMaterial} />
+                </mesh>
+                {/* Port inner hollow cavity */}
+                <mesh position={[0, 0, 0.001]} material={darkPortRecessMaterial}>
+                  <boxGeometry args={[0.009, 0.007, 0.0012]} />
+                </mesh>
+                {/* Tiny orange/green LED pins on top corners of the port */}
+                <mesh position={[-0.0035, 0.0036, 0.0016]}>
+                  <boxGeometry args={[0.0015, 0.001, 0.0005]} />
+                  <meshStandardMaterial color="#10b981" emissive="#10b981" emissiveIntensity={1.0} />
+                </mesh>
+                <mesh position={[0.0035, 0.0036, 0.0016]}>
+                  <boxGeometry args={[0.0015, 0.001, 0.0005]} />
+                  <meshStandardMaterial
+                    color="#f97316"
+                    emissive="#f97316"
+                    emissiveIntensity={port.id % 3 === 0 ? 0.0 : 0.8} // Blinking or steady state
+                  />
+                </mesh>
+              </group>
+            ))}
+          </group>
+
+          {/* Section 3: Hollow SFP+ Slots (Right-center region) */}
+          <group position={[0, -0.002, 0.0015]}>
+            {sfpPorts.map((port) => (
+              <group key={port.id} position={[port.x, 0, 0]}>
+                {/* Outer SFP+ Cage frame */}
+                <mesh castShadow>
+                  <boxGeometry args={[0.013, 0.011, 0.004]} />
+                  <meshStandardMaterial {...sfpCageMaterial} />
+                </mesh>
+                {/* Hollow connector cavity */}
+                <mesh position={[0, 0, 0.0012]} material={darkPortRecessMaterial}>
+                  <boxGeometry args={[0.011, 0.009, 0.002]} />
+                </mesh>
+                {/* Gold connector pins inside the hollow cavity */}
+                <mesh position={[0, -0.0035, 0.0006]}>
+                  <boxGeometry args={[0.008, 0.001, 0.0015]} />
+                  <meshStandardMaterial color="#d97706" metalness={0.9} roughness={0.1} />
+                </mesh>
+                {/* Active LED for SFP+ Slot */}
+                <mesh position={[0, 0.007, -0.0005]} material={port.id % 2 === 0 ? sfpLedGreen : sfpLedYellow}>
+                  <sphereGeometry args={[0.001, 8, 8]} />
+                </mesh>
+              </group>
+            ))}
+          </group>
+
+          {/* Section 4: Local Console port (Right end) */}
+          <group position={[0.145, -0.002, 0.0015]}>
+            {/* RJ45 Console Port */}
+            <mesh castShadow>
+              <boxGeometry args={[0.011, 0.009, 0.003]} />
+              <meshStandardMaterial color="#3b82f6" metalness={0.5} roughness={0.4} /> {/* Blue console port color */}
+            </mesh>
+            <mesh position={[0, 0, 0.001]} material={darkPortRecessMaterial}>
+              <boxGeometry args={[0.009, 0.007, 0.0012]} />
+            </mesh>
+          </group>
+
         </group>
       )}
 
@@ -238,5 +355,33 @@ export function Firewall({ hardware }: FirewallProps) {
         />
       )}
     </group>
+  );
+}
+
+/**
+ * Isolated Alarm LED to blink red dynamically.
+ */
+function AlarmLED() {
+  const matRef = useRef<THREE.MeshStandardMaterial>(null);
+
+  useFrame(({ clock }) => {
+    if (!matRef.current) return;
+    const t = clock.getElapsedTime();
+    // Quick blink: 3 times per second
+    const isLit = Math.floor(t * 5.0) % 2 === 0;
+    matRef.current.emissiveIntensity = isLit ? 1.6 : 0.1;
+  });
+
+  return (
+    <mesh position={[-0.01, -0.012, 0.0008]}>
+      <sphereGeometry args={[0.0015, 8, 8]} />
+      <meshStandardMaterial
+        ref={matRef}
+        color="#dc2626"
+        emissive="#dc2626"
+        emissiveIntensity={0.1}
+        roughness={0.1}
+      />
+    </mesh>
   );
 }

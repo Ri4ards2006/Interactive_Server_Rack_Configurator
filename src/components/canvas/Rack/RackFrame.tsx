@@ -65,7 +65,7 @@ export function RackFrame() {
   // Smooth pivoting door animation in R3F render loop
   useFrame((state, delta) => {
     if (!doorGroupRef.current) return;
-    const targetRot = isDoorOpen ? Math.PI / 2 : 0;
+    const targetRot = isDoorOpen ? -Math.PI * 0.7 : 0;
     doorGroupRef.current.rotation.y = THREE.MathUtils.lerp(
       doorGroupRef.current.rotation.y,
       targetRot,

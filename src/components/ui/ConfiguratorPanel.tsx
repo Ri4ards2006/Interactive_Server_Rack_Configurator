@@ -510,6 +510,21 @@ export function ConfiguratorPanel() {
                 </svg>
                 <span>CABLE BRUSH PANEL 1U</span>
               </button>
+              <button
+                type="button"
+                onClick={() => addHardware('cable-manager', 2)}
+                className="flex items-center gap-2.5 py-2.5 px-3 text-left font-mono text-[10px] uppercase border border-zinc-800/80 bg-zinc-950/40 hover:border-cyan-500 hover:text-cyan-400 hover:bg-cyan-950/10 active:scale-95 transition-all text-zinc-300 focus:outline-none rounded cursor-pointer w-full"
+              >
+                <svg className="w-4 h-4 text-violet-400 shrink-0" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+                  <rect x="2" y="4" width="20" height="16" rx="1" />
+                  <line x1="6" y1="8" x2="18" y2="8" />
+                  <line x1="6" y1="12" x2="18" y2="12" />
+                  <line x1="6" y1="16" x2="18" y2="16" />
+                  <line x1="9" y1="6" x2="9" y2="18" />
+                  <line x1="15" y1="6" x2="15" y2="18" />
+                </svg>
+                <span>CABLE MANAGEMENT 2U</span>
+              </button>
             </div>
           </div>
         </div>

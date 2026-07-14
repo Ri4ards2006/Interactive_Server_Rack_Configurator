@@ -179,6 +179,10 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
           defaultPowerDraw = 0;
           defaultDepth = 0.02;
           break;
+        case 'cable-manager':
+          defaultPowerDraw = 0;
+          defaultDepth = 0.08;
+          break;
       }
 
       return {

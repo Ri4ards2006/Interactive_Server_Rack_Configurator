@@ -2,15 +2,16 @@
  * NAS.tsx
  *
  * 2U Network Attached Storage (NAS) chassis.
- * Overhauled to present a high-fidelity visual signature:
- * - 12 horizontal detailed 3.5" HDD caddies arranged in 4 rows of 3 columns.
- * - Left-anchored controller panel featuring a glowing cyan OLED display,
- *   a tiny power button, status LEDs, and a micro-USB console port.
- * - Fits within standard 19-inch mounting dimensions.
+ * Rebuilt with high-fidelity detail:
+ * - 12 individually interactive HDD caddies (3 rows of 4 columns, or 4 rows of 3 columns).
+ * - Click on an HDD caddy to toggle its extraction (pull it out).
+ * - Blinking activity LEDs with randomized timing on each HDD sled.
+ * - Glowing OLED display with simulated text, detailed power toggle, and console port.
  */
 
-import { useLayoutEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
 import {
   RACK_UNIT_HEIGHT,
   CHASSIS_WIDTH,
@@ -37,47 +38,59 @@ const DRIVE_GAP_Y = 0.004;
 
 // ---- PBR Materials --------------------------------------------------
 const chassisMaterial = new THREE.MeshStandardMaterial({
-  color: '#1a1a1c',
-  metalness: 0.6,
-  roughness: 0.6,
+  color: '#18181b', // Dark zinc
+  metalness: 0.7,
+  roughness: 0.55,
 });
 
 const bezelMaterial = new THREE.MeshStandardMaterial({
-  color: '#0d0d0f',
-  metalness: 0.85,
+  color: '#09090b', // Deep zinc black
+  metalness: 0.8,
   roughness: 0.35,
 });
 
 const caddyMaterial = new THREE.MeshStandardMaterial({
-  color: '#141416', // Matte black caddy plastic
-  metalness: 0.1,
-  roughness: 0.8,
+  color: '#131316', // Matte black caddy plastic
+  metalness: 0.2,
+  roughness: 0.7,
 });
 
-const latchMaterial = new THREE.MeshStandardMaterial({
-  color: '#4b5563', // Brushed gray steel release lever
+const caddyFaceMaterial = new THREE.MeshStandardMaterial({
+  color: '#1a1a1f',
+  metalness: 0.5,
+  roughness: 0.55,
+});
+
+const metalLeverMaterial = new THREE.MeshStandardMaterial({
+  color: '#3f3f46', // Brushed gray steel release lever
   metalness: 0.9,
   roughness: 0.25,
 });
 
-const oledMaterial = new THREE.MeshBasicMaterial({
-  color: '#06b6d4', // Glowing cyan OLED screen
-  toneMapped: false,
+const oledScreenMaterial = new THREE.MeshStandardMaterial({
+  color: '#083344', // Deep cyan
+  emissive: '#06b6d4', // Glowing cyan OLED screen
+  emissiveIntensity: 1.8,
+  roughness: 0.1,
+  metalness: 0.2,
 });
 
-const ledGreen = new THREE.MeshBasicMaterial({
+const ledSolidGreen = new THREE.MeshStandardMaterial({
   color: '#10b981',
-  toneMapped: false,
+  emissive: '#10b981',
+  emissiveIntensity: 1.2,
+});
+
+const ledRed = new THREE.MeshStandardMaterial({
+  color: '#ef4444',
+  emissive: '#ef4444',
+  emissiveIntensity: 1.2,
 });
 
 const usbPortMaterial = new THREE.MeshStandardMaterial({
-  color: '#a1a1aa',
-  metalness: 0.95,
-  roughness: 0.1,
-});
-
-const blueprintCaddyMaterial = new THREE.MeshBasicMaterial({
-  color: '#27272a',
+  color: '#71717a',
+  metalness: 0.9,
+  roughness: 0.2,
 });
 
 interface NASProps {
@@ -85,9 +98,7 @@ interface NASProps {
 }
 
 export function NAS({ hardware }: NASProps) {
-  const caddyRef = useRef<THREE.InstancedMesh>(null);
-  const latchRef = useRef<THREE.InstancedMesh>(null);
-  const caddyLedRef = useRef<THREE.InstancedMesh>(null);
+  const [extractedSleds, setExtractedSleds] = useState<Record<number, boolean>>({});
 
   const RACK_UNITS = 2;
   const DEPTH = 0.55;
@@ -102,80 +113,31 @@ export function NAS({ hardware }: NASProps) {
   const chassisHeight = RACK_UNITS * RACK_UNIT_HEIGHT - EDGE_GAP;
   const zShift = 0.39 - DEPTH / 2;
 
-  const totalCaddies = DRIVE_ROWS * DRIVE_COLS;
   const totalGridW = DRIVE_COLS * DRIVE_W + (DRIVE_COLS - 1) * DRIVE_GAP_X;
   const totalGridH = DRIVE_ROWS * DRIVE_H + (DRIVE_ROWS - 1) * DRIVE_GAP_Y;
 
-  // Position caddy grid centered-right on the 44cm wide face
+  // Position caddy grid centered-right on the front face
   const startX = -totalGridW / 2 + DRIVE_W / 2 + 0.05;
   const startY = -totalGridH / 2 + DRIVE_H / 2;
-  const portDepthOffset = 0.39 + 0.002;
+  const bezelFrontZ = 0.39 + 0.003;
 
-  // -- Seed HDD Caddies ------------------------------------------------
-  useLayoutEffect(() => {
-    const mesh = caddyRef.current;
-    if (!mesh) return;
-    const dummy = new THREE.Object3D();
-    let i = 0;
-    for (let r = 0; r < DRIVE_ROWS; r++) {
-      for (let c = 0; c < DRIVE_COLS; c++) {
-        dummy.position.set(
-          startX + c * (DRIVE_W + DRIVE_GAP_X),
-          startY + r * (DRIVE_H + DRIVE_GAP_Y),
-          portDepthOffset,
-        );
-        dummy.updateMatrix();
-        mesh.setMatrixAt(i++, dummy.matrix);
-      }
+  // Generate list of drive indexes
+  const driveIndices: Array<{ r: number; c: number; index: number }> = [];
+  let driveCount = 0;
+  for (let r = 0; r < DRIVE_ROWS; r++) {
+    for (let c = 0; c < DRIVE_COLS; c++) {
+      driveIndices.push({ r, c, index: driveCount++ });
     }
-    mesh.count = totalCaddies;
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-  }, [startX, startY, portDepthOffset, totalCaddies]);
+  }
 
-  // -- Seed Caddy Release Latches --------------------------------------
-  useLayoutEffect(() => {
-    const mesh = latchRef.current;
-    if (!mesh || isBlueprint) return;
-    const dummy = new THREE.Object3D();
-    let i = 0;
-    for (let r = 0; r < DRIVE_ROWS; r++) {
-      for (let c = 0; c < DRIVE_COLS; c++) {
-        dummy.position.set(
-          startX + c * (DRIVE_W + DRIVE_GAP_X) - DRIVE_W / 2 + 0.015,
-          startY + r * (DRIVE_H + DRIVE_GAP_Y),
-          portDepthOffset + 0.0006,
-        );
-        dummy.updateMatrix();
-        mesh.setMatrixAt(i++, dummy.matrix);
-      }
-    }
-    mesh.count = totalCaddies;
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-  }, [startX, startY, portDepthOffset, totalCaddies, isBlueprint]);
-
-  // -- Seed Sled Activity LEDs -----------------------------------------
-  useLayoutEffect(() => {
-    const mesh = caddyLedRef.current;
-    if (!mesh || isBlueprint) return;
-    const dummy = new THREE.Object3D();
-    let i = 0;
-    for (let r = 0; r < DRIVE_ROWS; r++) {
-      for (let c = 0; c < DRIVE_COLS; c++) {
-        dummy.position.set(
-          startX + c * (DRIVE_W + DRIVE_GAP_X) + DRIVE_W / 2 - 0.008,
-          startY + r * (DRIVE_H + DRIVE_GAP_Y),
-          portDepthOffset + 0.0006,
-        );
-        dummy.updateMatrix();
-        mesh.setMatrixAt(i++, dummy.matrix);
-      }
-    }
-    mesh.count = totalCaddies;
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-  }, [startX, startY, portDepthOffset, totalCaddies, isBlueprint]);
+  // Toggle extraction of a drive caddy
+  const handleCaddyClick = (index: number, e: any) => {
+    e.stopPropagation(); // Prevent selecting/deselecting the NAS itself
+    setExtractedSleds((prev) => ({
+      ...prev,
+      [index]: !prev[index],
+    }));
+  };
 
   return (
     <group
@@ -224,68 +186,158 @@ export function NAS({ hardware }: NASProps) {
         />
       )}
 
-      {/* Drive caddies */}
-      <instancedMesh
-        ref={caddyRef}
-        args={[undefined, undefined, totalCaddies]}
-        material={isBlueprint ? blueprintCaddyMaterial : caddyMaterial}
-        castShadow={false}
-      >
-        <boxGeometry args={[DRIVE_W, DRIVE_H, 0.0015]} />
-      </instancedMesh>
-
-      {/* Release clips */}
-      {!isBlueprint && (
-        <instancedMesh
-          ref={latchRef}
-          args={[undefined, undefined, totalCaddies]}
-          material={latchMaterial}
-        >
-          <boxGeometry args={[0.012, 0.008, 0.001]} />
-        </instancedMesh>
-      )}
-
-      {/* Disk status green LEDs */}
-      {!isBlueprint && (
-        <instancedMesh
-          ref={caddyLedRef}
-          args={[undefined, undefined, totalCaddies]}
-          material={ledGreen}
-        >
-          <boxGeometry args={[0.002, 0.002, 0.0005]} />
-        </instancedMesh>
-      )}
-
       {/* Controller panel on the left bezel */}
       {!isBlueprint && (
-        <group position={[-CHASSIS_WIDTH / 2 + 0.055, 0, 0.39 + 0.002]}>
-          {/* OLED Display */}
-          <mesh position={[-0.015, 0, 0.0005]}>
-            <boxGeometry args={[0.045, 0.022, 0.001]} />
-            <meshBasicMaterial color="#020202" />
+        <group position={[-CHASSIS_WIDTH / 2 + 0.055, 0, bezelFrontZ]}>
+          {/* Panel background recess */}
+          <mesh>
+            <boxGeometry args={[0.08, chassisHeight - 0.016, 0.0015]} />
+            <meshStandardMaterial color="#070708" metalness={0.7} roughness={0.4} />
           </mesh>
-          <mesh position={[-0.015, 0, 0.0012]} material={oledMaterial}>
-            <boxGeometry args={[0.04, 0.018, 0.0002]} />
-          </mesh>
+
+          {/* Cyan OLED Display */}
+          <group position={[-0.012, 0.012, 0.001]}>
+            <mesh>
+              <boxGeometry args={[0.045, 0.022, 0.001]} />
+              <meshBasicMaterial color="#020202" />
+            </mesh>
+            <mesh position={[0, 0, 0.0006]} material={oledScreenMaterial}>
+              <boxGeometry args={[0.04, 0.018, 0.0002]} />
+            </mesh>
+            {/* OLED simulated stats display */}
+            <group position={[0, 0, 0.001]}>
+              <mesh position={[-0.01, 0.004, 0]}>
+                <boxGeometry args={[0.016, 0.002, 0.0001]} />
+                <meshBasicMaterial color="#22d3ee" />
+              </mesh>
+              <mesh position={[-0.005, 0, 0]}>
+                <boxGeometry args={[0.026, 0.002, 0.0001]} />
+                <meshBasicMaterial color="#22d3ee" />
+              </mesh>
+              <mesh position={[0.002, -0.004, 0]}>
+                <boxGeometry args={[0.032, 0.002, 0.0001]} />
+                <meshBasicMaterial color="#22d3ee" />
+              </mesh>
+            </group>
+          </group>
 
           {/* Power Button */}
-          <mesh position={[0.02, 0.008, 0.0005]} material={latchMaterial} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.004, 0.004, 0.002, 8]} />
-          </mesh>
-          <mesh position={[0.02, 0.008, 0.0012]} material={ledGreen}>
-            <sphereGeometry args={[0.001, 8, 8]} />
-          </mesh>
+          <group position={[0.024, 0.012, 0.001]}>
+            <mesh material={metalLeverMaterial} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.0035, 0.0035, 0.002, 8]} />
+            </mesh>
+            <mesh position={[0, 0, 0.0012]} material={ledSolidGreen}>
+              <sphereGeometry args={[0.0012, 8, 8]} />
+            </mesh>
+          </group>
 
           {/* Micro-USB Console Port */}
-          <mesh position={[0.02, -0.008, 0.0005]} material={usbPortMaterial}>
-            <boxGeometry args={[0.006, 0.004, 0.0015]} />
+          <mesh position={[0.022, -0.014, 0.001]} material={usbPortMaterial}>
+            <boxGeometry args={[0.007, 0.004, 0.002]} />
           </mesh>
-          <mesh position={[0.02, -0.008, 0.0012]}>
+          <mesh position={[0.022, -0.014, 0.0022]}>
             <boxGeometry args={[0.003, 0.0015, 0.0002]} />
             <meshBasicMaterial color="#020202" />
           </mesh>
+
+          {/* System status LEDs */}
+          <group position={[-0.015, -0.018, 0.001]}>
+            <mesh position={[-0.008, 0, 0]} material={ledSolidGreen}>
+              <sphereGeometry args={[0.0015, 8, 8]} />
+            </mesh>
+            <mesh position={[0.004, 0, 0]}>
+              <sphereGeometry args={[0.0015, 8, 8]} />
+              <meshStandardMaterial color="#f59e0b" emissive="#f59e0b" emissiveIntensity={0.2} />
+            </mesh>
+          </group>
         </group>
       )}
+
+      {/* Render HDD Caddies (individual meshes to allow sliding out & clicking) */}
+      {driveIndices.map(({ r, c, index }) => {
+        const isExtracted = !!extractedSleds[index];
+        const sledZOffset = isExtracted ? 0.08 : 0.0;
+        
+        // Horizontal/vertical positions
+        const xPos = startX + c * (DRIVE_W + DRIVE_GAP_X);
+        const yPos = startY + r * (DRIVE_H + DRIVE_GAP_Y);
+
+        return (
+          <group
+            key={index}
+            position={[xPos, yPos, bezelFrontZ + sledZOffset]}
+            onClick={(e) => handleCaddyClick(index, e)}
+          >
+            {/* HDD Caddy Sled Body (extends back into chassis) */}
+            {!isBlueprint && (
+              <mesh
+                position={[0, 0, -DEPTH / 2 + 0.01]}
+                castShadow
+                material={caddyMaterial}
+              >
+                {/* 3.5" drive mock enclosure */}
+                <boxGeometry args={[DRIVE_W - 0.004, DRIVE_H - 0.002, DEPTH - 0.02]} />
+              </mesh>
+            )}
+
+            {/* Front Bezel Faceplate */}
+            <mesh
+              position={[0, 0, 0.001]}
+              material={isBlueprint ? blueprintChassisMaterial : caddyFaceMaterial}
+              castShadow={!isBlueprint}
+            >
+              <boxGeometry args={[DRIVE_W, DRIVE_H, 0.003]} />
+            </mesh>
+
+            {/* Vent slots on caddy front */}
+            {!isBlueprint && (
+              <group position={[-0.01, 0, 0.0022]}>
+                <mesh material={bezelMaterial}>
+                  <boxGeometry args={[0.038, 0.002, 0.0006]} />
+                </mesh>
+                <mesh material={bezelMaterial} position={[0, 0.003, 0]}>
+                  <boxGeometry args={[0.038, 0.002, 0.0006]} />
+                </mesh>
+                <mesh material={bezelMaterial} position={[0, -0.003, 0]}>
+                  <boxGeometry args={[0.038, 0.002, 0.0006]} />
+                </mesh>
+              </group>
+            )}
+
+            {/* Metal release latch lever */}
+            {!isBlueprint && (
+              <mesh
+                position={[-DRIVE_W / 2 + 0.016, 0, 0.0026]}
+                material={metalLeverMaterial}
+                castShadow
+              >
+                <boxGeometry args={[0.014, DRIVE_H - 0.004, 0.0015]} />
+              </mesh>
+            )}
+
+            {/* Solid green power LED */}
+            {!isBlueprint && (
+              <mesh position={[DRIVE_W / 2 - 0.015, 0.002, 0.0026]} material={ledSolidGreen}>
+                <sphereGeometry args={[0.0012, 8, 8]} />
+              </mesh>
+            )}
+
+            {/* Flickering Disk Activity LED */}
+            {!isBlueprint && (
+              <ActivityLED r={r} c={c} isExtracted={isExtracted} />
+            )}
+
+            {isBlueprint && (
+              <SchematicBox
+                width={DRIVE_W}
+                height={DRIVE_H}
+                depth={0.003}
+                position={[0, 0, 0.001]}
+              />
+            )}
+          </group>
+        );
+      })}
 
       {/* Selection outline */}
       {interaction.isSelected && (
@@ -296,5 +348,53 @@ export function NAS({ hardware }: NASProps) {
         />
       )}
     </group>
+  );
+}
+
+/**
+ * A helper component that drives the flickering activity LED of an HDD caddy.
+ * Keeps re-renders isolated to just the LED mesh itself.
+ */
+function ActivityLED({ r, c, isExtracted }: { r: number; c: number; isExtracted: boolean }) {
+  const ledRef = useRef<THREE.MeshStandardMaterial>(null);
+  
+  // Custom blinking speed coefficients based on row/column
+  const freq = 12 + r * 5 + c * 4;
+  const pulseOffset = r * 0.4 + c * 0.7;
+
+  useFrame((state) => {
+    if (!ledRef.current) return;
+    
+    // Simulate active disk read/write
+    const t = state.clock.getElapsedTime();
+    // Complex noise-like wave using trigonometry
+    const val = Math.sin(t * freq + pulseOffset) * Math.cos(t * (freq * 0.6)) + Math.sin(t * 2);
+    
+    // Threshold to decide if LED is illuminated
+    const isLit = val > 0.4;
+    
+    if (isLit) {
+      // 90% Green activity, 10% Amber fault simulation on index 3/2 (some disk error)
+      const isFaulty = r === 2 && c === 1;
+      ledRef.current.color.set(isFaulty ? '#ef4444' : '#10b981');
+      ledRef.current.emissive.set(isFaulty ? '#ef4444' : '#10b981');
+      ledRef.current.emissiveIntensity = 1.5;
+    } else {
+      ledRef.current.emissiveIntensity = 0.0;
+      ledRef.current.color.set('#064e3b');
+    }
+  });
+
+  return (
+    <mesh position={[DRIVE_W / 2 - 0.008, 0.002, 0.0026]}>
+      <sphereGeometry args={[0.0012, 8, 8]} />
+      <meshStandardMaterial
+        ref={ledRef}
+        color="#064e3b"
+        emissive="#10b981"
+        emissiveIntensity={0.0}
+        roughness={0.1}
+      />
+    </mesh>
   );
 }

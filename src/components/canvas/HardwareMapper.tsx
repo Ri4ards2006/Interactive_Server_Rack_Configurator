@@ -32,6 +32,7 @@ import { BlankingPanel } from './Hardware/BlankingPanel';
 import { NAS } from './Hardware/NAS';
 import { Firewall } from './Hardware/Firewall';
 import { BrushPanel } from './Hardware/BrushPanel';
+import { CableManager } from './Hardware/CableManager';
 
 export function HardwareMapper() {
   const installedHardware = useConfiguratorStore(
@@ -64,6 +65,8 @@ export function HardwareMapper() {
             return <Firewall key={h.id} hardware={h} />;
           case 'brush':
             return <BrushPanel key={h.id} hardware={h} />;
+          case 'cable-manager':
+            return <CableManager key={h.id} hardware={h} />;
           default: {
             // Exhaustiveness guard — TS narrows `h.type` to `never` here
             // so adding a new HardwareType without updating this switch

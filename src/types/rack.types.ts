@@ -22,7 +22,8 @@ export type HardwareType =
   | 'blank'
   | 'nas'
   | 'firewall'
-  | 'brush';
+  | 'brush'
+  | 'cable-manager';
 
 /** Convenience alias for a 3D position tuple used everywhere in the scene. */
 export type Vec3 = [number, number, number];
