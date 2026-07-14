@@ -43,6 +43,15 @@ export interface HardwareProps {
   position: Vec3; // meters, in rack-local space
 }
 
+export interface CableProps {
+  id: string;
+  fromDevice: string;
+  fromPort: string;
+  toDevice: string;
+  toPort: string;
+  color: string;
+}
+
 /**
  * The minimal, serializable shape of the rack itself.
  *
@@ -56,4 +65,7 @@ export interface RackState {
 
   /** All currently mounted hardware, listed in mount order (bottom → top). */
   installedHardware: HardwareProps[];
+
+  /** All patched cable connections. */
+  cables: CableProps[];
 }

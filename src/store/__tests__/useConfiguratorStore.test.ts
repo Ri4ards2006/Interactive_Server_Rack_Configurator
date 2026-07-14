@@ -39,6 +39,7 @@ beforeEach(() => {
   useConfiguratorStore.setState({
     capacity: 42,
     installedHardware: [],
+    cables: [],
     selectedHardwareId: null,
     viewMode: '3D',
   });

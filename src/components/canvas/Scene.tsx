@@ -47,6 +47,7 @@ import { RackFrame } from './Rack/RackFrame';
 import { RackScrews } from './Rack/RackScrews';
 import { RackLabels } from './Rack/RackLabels';
 import { HardwareMapper } from './HardwareMapper';
+import { CableMapper } from './Hardware/PatchCable';
 import { DropIndicator } from './interactions/DropIndicator';
 import {
   useConfiguratorStore,
@@ -140,6 +141,7 @@ function SceneContents({ orbitRef }: SceneContentsProps) {
           inside the component returns null until blueprint mode. */}
       <RackLabels />
       <HardwareMapper />
+      <CableMapper />
       {/* Ghost preview rendered only while a drag is in progress.
           DropIndicator's valid/invalid colour swap is intact in both
           viewModes — the only thing that changes is whether the

@@ -20,6 +20,7 @@ import {
   HardwareType,
   RackState,
   Vec3,
+  CableProps,
 } from '../types/rack.types';
 
 /** 1U height in meters (~4.445 cm, the EIA-310 standard). */
@@ -97,6 +98,12 @@ export interface ConfiguratorState extends RackState {
 
   /** Set whether the cabinet door is open. */
   setDoorOpen: (isOpen: boolean) => void;
+
+  /** Patches a cable between ports. */
+  addCable: (fromDevice: string, fromPort: string, toDevice: string, toPort: string, color: string) => void;
+
+  /** Unpatches a cable connection. */
+  removeCable: (id: string) => void;
 }
 
 /**
@@ -118,6 +125,32 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       powerDraw: 250,
       depth: 0.6,
       position: [0, 0.04445, 0], // Centered perfectly on slot 0 floor
+    },
+    {
+      id: "default-switch-1",
+      type: "switch",
+      rackUnits: 1,
+      powerDraw: 50,
+      depth: 0.3,
+      position: [0, 0.111125, 0], // U3 (offset = 2.5 * RACK_UNIT_HEIGHT)
+    },
+  ],
+  cables: [
+    {
+      id: "default-cable-1",
+      fromDevice: "default-chassis-1",
+      fromPort: "4",
+      toDevice: "default-switch-1",
+      toPort: "1",
+      color: "#eab308", // Ethernet yellow
+    },
+    {
+      id: "default-cable-2",
+      fromDevice: "default-chassis-1",
+      fromPort: "8",
+      toDevice: "default-switch-1",
+      toPort: "12",
+      color: "#3b82f6", // Ethernet blue
     },
   ],
   selectedHardwareId: null,
@@ -203,8 +236,29 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
   removeHardware: (id) =>
     set((state) => ({
       installedHardware: state.installedHardware.filter((h) => h.id !== id),
+      cables: state.cables.filter((c) => c.fromDevice !== id && c.toDevice !== id),
       selectedHardwareId:
         state.selectedHardwareId === id ? null : state.selectedHardwareId,
+    })),
+
+  addCable: (fromDevice, fromPort, toDevice, toPort, color) =>
+    set((state) => ({
+      cables: [
+        ...state.cables,
+        {
+          id: generateId(),
+          fromDevice,
+          fromPort,
+          toDevice,
+          toPort,
+          color,
+        },
+      ],
+    })),
+
+  removeCable: (id) =>
+    set((state) => ({
+      cables: state.cables.filter((c) => c.id !== id),
     })),
 
   updateHardwarePosition: (id, position) =>
