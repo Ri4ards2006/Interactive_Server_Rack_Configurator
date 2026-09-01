@@ -21,6 +21,13 @@ import {
   CABLE_MEDIUM_SPECS,
   CableType,
 } from '../../types/cable.types';
+import {
+  VOLTAGE_STANDARDS,
+  VoltageStandard,
+  BreakerRating,
+  FeedFailoverMode,
+} from '../../types/electrical.types';
+import { evaluateRackElectrical } from '../../utils/electricalCalculations';
 import { checkDropValidity } from '../../utils/rackLayout';
 
 interface CatalogItem {
@@ -357,6 +364,24 @@ export function ConfiguratorPanel() {
       rowHardwareCount: hCount,
     };
   }, [racks]);
+
+  // 3-Phase Electrical Simulation State
+  const voltageStandard = useConfiguratorStore((s) => s.voltageStandard);
+  const breakerRating = useConfiguratorStore((s) => s.breakerRating);
+  const feedFailoverMode = useConfiguratorStore((s) => s.feedFailoverMode);
+  const setVoltageStandard = useConfiguratorStore((s) => s.setVoltageStandard);
+  const setBreakerRating = useConfiguratorStore((s) => s.setBreakerRating);
+  const setFeedFailoverMode = useConfiguratorStore((s) => s.setFeedFailoverMode);
+
+  // Electrical report for active rack
+  const electricalReport = useMemo(() => {
+    return evaluateRackElectrical(installedHardware, {
+      rackId: activeRackId,
+      voltageStandard,
+      breakerRating,
+      failoverMode: feedFailoverMode,
+    });
+  }, [installedHardware, activeRackId, voltageStandard, breakerRating, feedFailoverMode]);
 
   const totalCableDistance = useMemo(() => {
     return cables.reduce((acc, c) => acc + (c.lengthMeters || 0.4), 0);
@@ -696,6 +721,201 @@ export function ConfiguratorPanel() {
               </div>
             </div>
           )}
+        </div>
+
+        {/* ----------------------------------------------------------------- */}
+        {/* 3-PHASE ELECTRICAL & PDU DIAGNOSTICS                             */}
+        {/* ----------------------------------------------------------------- */}
+        <div className="py-4 border-b border-zinc-800/60 flex flex-col gap-3 font-mono">
+          <div className="flex justify-between items-center">
+            <label className="text-[9px] uppercase tracking-wider text-zinc-500">
+              [ 3Φ PDU & ELECTRICAL ]
+            </label>
+            <span
+              className={`text-[8px] px-1.5 py-0.5 rounded border font-bold uppercase ${
+                electricalReport.hasBreakerTrip
+                  ? 'bg-red-950/80 border-red-500 text-red-300 animate-pulse'
+                  : electricalReport.hasOverloadWarning
+                  ? 'bg-amber-950/60 border-amber-500 text-amber-300'
+                  : 'bg-emerald-950/60 border-emerald-500 text-emerald-300'
+              }`}
+            >
+              {electricalReport.hasBreakerTrip
+                ? '⚡ BREAKER TRIP'
+                : electricalReport.hasOverloadWarning
+                ? '⚠️ >80% CONTINUOUS'
+                : '✓ N+N REDUNDANT'}
+            </span>
+          </div>
+
+          {/* Voltage Standard & Breaker Controls */}
+          <div className="flex flex-col gap-1.5">
+            <div className="grid grid-cols-2 gap-1">
+              {(['EU-230V-400V', 'US-120V-208V'] as VoltageStandard[]).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setVoltageStandard(v)}
+                  className={`py-1 text-[8px] font-mono rounded border transition-all cursor-pointer ${
+                    voltageStandard === v
+                      ? 'border-cyan-500 bg-cyan-950/50 text-cyan-300 font-bold'
+                      : 'border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {v === 'EU-230V-400V' ? 'EU 230V/400V' : 'US 120V/208V'}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-4 gap-1">
+              {([16, 20, 32, 63] as BreakerRating[]).map((b) => (
+                <button
+                  key={b}
+                  type="button"
+                  onClick={() => setBreakerRating(b)}
+                  className={`py-0.5 text-[8px] font-mono rounded border transition-all cursor-pointer ${
+                    breakerRating === b
+                      ? 'border-cyan-500 bg-cyan-950/50 text-cyan-300 font-bold'
+                      : 'border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {b}A
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* A/B Redundancy Failover Simulator */}
+          <div className="flex flex-col gap-1 bg-zinc-950/60 border border-zinc-850 p-2 rounded">
+            <div className="flex justify-between items-center">
+              <span className="text-[8px] uppercase text-zinc-500">FAILOVER_SIMULATOR</span>
+              <span className="text-[8px] text-zinc-400 font-bold">
+                {feedFailoverMode === 'normal'
+                  ? 'A+B DUAL-FEED'
+                  : feedFailoverMode === 'failover-feed-a-down'
+                  ? 'FEED A OUTAGE'
+                  : 'FEED B OUTAGE'}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-1 mt-1">
+              <button
+                type="button"
+                onClick={() => setFeedFailoverMode('normal')}
+                className={`py-1 text-[8px] font-mono rounded border transition-all cursor-pointer ${
+                  feedFailoverMode === 'normal'
+                    ? 'border-emerald-500 bg-emerald-950/40 text-emerald-300 font-bold'
+                    : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                NORMAL
+              </button>
+              <button
+                type="button"
+                onClick={() => setFeedFailoverMode('failover-feed-a-down')}
+                className={`py-1 text-[8px] font-mono rounded border transition-all cursor-pointer ${
+                  feedFailoverMode === 'failover-feed-a-down'
+                    ? 'border-red-500 bg-red-950/60 text-red-300 font-bold'
+                    : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                KILL A
+              </button>
+              <button
+                type="button"
+                onClick={() => setFeedFailoverMode('failover-feed-b-down')}
+                className={`py-1 text-[8px] font-mono rounded border transition-all cursor-pointer ${
+                  feedFailoverMode === 'failover-feed-b-down'
+                    ? 'border-red-500 bg-red-950/60 text-red-300 font-bold'
+                    : 'border-zinc-800 text-zinc-400 hover:text-zinc-200'
+                }`}
+              >
+                KILL B
+              </button>
+            </div>
+          </div>
+
+          {/* Dual Feed Visualizer: Feed A and Feed B */}
+          <div className="grid grid-cols-2 gap-2">
+            {[electricalReport.feedA, electricalReport.feedB].map((feed) => {
+              const isDead = feed.status === 'failed';
+              return (
+                <div
+                  key={feed.feedId}
+                  className={`p-2 rounded border flex flex-col gap-1.5 transition-all ${
+                    isDead
+                      ? 'bg-zinc-950/40 border-zinc-850 opacity-40'
+                      : feed.hasTrip
+                      ? 'bg-red-950/30 border-red-500/80 shadow-[0_0_8px_rgba(239,68,68,0.3)]'
+                      : feed.isFeedOverloaded
+                      ? 'bg-amber-950/20 border-amber-500/60'
+                      : 'bg-zinc-950/60 border-zinc-800'
+                  }`}
+                >
+                  <div className="flex justify-between items-center border-b border-zinc-800/80 pb-1">
+                    <span className="text-[8px] font-bold uppercase text-zinc-300">
+                      {feed.feedId === 'feed-a' ? 'FEED A (PRI)' : 'FEED B (SEC)'}
+                    </span>
+                    <span
+                      className={`text-[7px] px-1 rounded uppercase ${
+                        isDead
+                          ? 'text-zinc-600 bg-zinc-900'
+                          : feed.hasTrip
+                          ? 'text-red-300 bg-red-950 font-bold'
+                          : 'text-emerald-400 bg-emerald-950/50'
+                      }`}
+                    >
+                      {feed.status}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between text-[8px] text-zinc-400">
+                    <span>PWR: {feed.totalPowerWatts.toLocaleString()}W</span>
+                    <span>IMB: {feed.phaseImbalancePct}%</span>
+                  </div>
+
+                  {/* 3-Phase Bars */}
+                  <div className="flex flex-col gap-1 mt-0.5">
+                    {(['L1', 'L2', 'L3'] as const).map((phaseKey) => {
+                      const phaseData = feed.phases[phaseKey];
+                      const pct = phaseData.utilizationPct;
+                      const isTrip = phaseData.isBreakerTripped;
+                      const isOver = phaseData.isContinuousOverload;
+
+                      return (
+                        <div key={phaseKey} className="flex flex-col gap-0.5">
+                          <div className="flex justify-between text-[7px] font-mono">
+                            <span className="text-zinc-400">{phaseKey}</span>
+                            <span
+                              className={
+                                isTrip
+                                  ? 'text-red-400 font-bold'
+                                  : isOver
+                                  ? 'text-amber-400 font-bold'
+                                  : 'text-zinc-300'
+                              }
+                            >
+                              {phaseData.currentAmps}A ({pct.toFixed(0)}%)
+                            </span>
+                          </div>
+                          <div className="w-full h-1 bg-zinc-900 rounded overflow-hidden border border-zinc-800/60">
+                            <div
+                              className={`h-full transition-all duration-300 ${
+                                isTrip
+                                  ? 'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.8)]'
+                                  : isOver
+                                  ? 'bg-amber-400'
+                                  : 'bg-cyan-500'
+                              }`}
+                              style={{ width: `${Math.min(100, pct)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Patching & Cabling Control Panel */}
