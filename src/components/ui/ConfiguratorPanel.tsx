@@ -1044,6 +1044,100 @@ export function ConfiguratorPanel() {
 
         {/* Add hardware catalog */}
         <div className="py-4 flex flex-col gap-4">
+          {/* Custom 3D GLTF/GLB Asset Upload Zone */}
+          <div
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => {
+              e.preventDefault();
+              const files = e.dataTransfer.files;
+              if (files && files.length > 0) {
+                const file = files[0];
+                if (file.name.endsWith('.glb') || file.name.endsWith('.gltf')) {
+                  const blobUrl = URL.createObjectURL(file);
+                  const modelName = file.name.replace(/\.(glb|gltf)$/i, '');
+                  let detectedU = 1;
+                  if (modelName.toLowerCase().includes('4u')) detectedU = 4;
+                  else if (modelName.toLowerCase().includes('2u')) detectedU = 2;
+                  else if (modelName.toLowerCase().includes('3u')) detectedU = 3;
+
+                  useConfiguratorStore.setState((state) => {
+                    const activeRack = state.racks.find((r) => r.id === state.activeRackId)!;
+                    const newHw: HardwareProps = {
+                      id: `custom-${Date.now()}`,
+                      type: 'server',
+                      rackUnits: detectedU,
+                      powerDraw: 250 * detectedU,
+                      depth: 0.65,
+                      position: [0, (detectedU * 0.04445) / 2, 0],
+                      customModelUrl: blobUrl,
+                      modelName: modelName.toUpperCase(),
+                      rackId: state.activeRackId,
+                    };
+                    const updated = [...activeRack.installedHardware, newHw];
+                    return {
+                      racks: state.racks.map((r) =>
+                        r.id === state.activeRackId ? { ...r, installedHardware: updated } : r,
+                      ),
+                      installedHardware: updated,
+                      selectedHardwareId: newHw.id,
+                    };
+                  });
+                }
+              }
+            }}
+            className="p-3 border border-dashed border-cyan-500/40 hover:border-cyan-400 bg-cyan-950/20 hover:bg-cyan-950/40 rounded flex flex-col items-center justify-center gap-1.5 transition-all text-center cursor-pointer group"
+          >
+            <input
+              type="file"
+              accept=".glb,.gltf"
+              id="gltf-upload-input"
+              className="hidden"
+              onChange={(e) => {
+                const files = e.target.files;
+                if (files && files.length > 0) {
+                  const file = files[0];
+                  const blobUrl = URL.createObjectURL(file);
+                  const modelName = file.name.replace(/\.(glb|gltf)$/i, '');
+                  let detectedU = 1;
+                  if (modelName.toLowerCase().includes('4u')) detectedU = 4;
+                  else if (modelName.toLowerCase().includes('2u')) detectedU = 2;
+                  else if (modelName.toLowerCase().includes('3u')) detectedU = 3;
+
+                  useConfiguratorStore.setState((state) => {
+                    const activeRack = state.racks.find((r) => r.id === state.activeRackId)!;
+                    const newHw: HardwareProps = {
+                      id: `custom-${Date.now()}`,
+                      type: 'server',
+                      rackUnits: detectedU,
+                      powerDraw: 250 * detectedU,
+                      depth: 0.65,
+                      position: [0, (detectedU * 0.04445) / 2, 0],
+                      customModelUrl: blobUrl,
+                      modelName: modelName.toUpperCase(),
+                      rackId: state.activeRackId,
+                    };
+                    const updated = [...activeRack.installedHardware, newHw];
+                    return {
+                      racks: state.racks.map((r) =>
+                        r.id === state.activeRackId ? { ...r, installedHardware: updated } : r,
+                      ),
+                      installedHardware: updated,
+                      selectedHardwareId: newHw.id,
+                    };
+                  });
+                }
+              }}
+            />
+            <label htmlFor="gltf-upload-input" className="cursor-pointer flex flex-col items-center gap-1">
+              <span className="text-xs">🧊</span>
+              <span className="text-[9px] font-bold text-cyan-300 group-hover:text-cyan-200 uppercase tracking-wider">
+                + IMPORT CUSTOM 3D ASSET (.GLB)
+              </span>
+              <span className="text-[8px] text-zinc-500">
+                DRAG & DROP OR CLICK TO LOAD 3D VENDOR CHASSIS
+              </span>
+            </label>
+          </div>
           {(() => {
             const q = searchQuery.toLowerCase().trim();
             const filtered = catalogItems.filter((item) =>

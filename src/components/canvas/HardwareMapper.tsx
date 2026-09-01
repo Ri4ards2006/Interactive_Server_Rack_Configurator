@@ -11,6 +11,7 @@ import type { HardwareProps } from '../../types/rack.types';
 import { hardwareRegistry } from '../../utils/hardwareRegistry';
 import { useHardwareInteraction } from '../../hooks/useHardwareInteraction';
 import { SelectionOutline, SchematicBox, blueprintChassisMaterial, useIsBlueprint, RackMountDetails } from './Hardware/shared';
+import { CustomGltfChassis } from './Hardware/CustomGltfChassis';
 import * as THREE from 'three';
 
 const fallbackMaterial = new THREE.MeshStandardMaterial({
@@ -79,6 +80,9 @@ export function HardwareMapper({
   return (
     <>
       {items.map((h: HardwareProps) => {
+        if (h.customModelUrl) {
+          return <CustomGltfChassis key={h.id} hardware={h} />;
+        }
         const Component = hardwareRegistry.getRenderer(h.type);
         if (Component) {
           return <Component key={h.id} hardware={h} />;
