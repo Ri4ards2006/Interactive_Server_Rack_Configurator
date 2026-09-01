@@ -32,3 +32,4 @@ jobs:
 
       - name: Run CLI Linter Help & Self-Test
         run: node ./bin/rack-lint.js --help
+

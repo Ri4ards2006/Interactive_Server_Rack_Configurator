@@ -192,3 +192,4 @@ describe('rackLint — Compliance Validation Rules', () => {
     expect(result.issues.some((i) => i.code === 'ERR_BEND_RADIUS')).toBe(true);
   });
 });
+
