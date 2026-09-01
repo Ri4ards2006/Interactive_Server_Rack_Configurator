@@ -130,3 +130,4 @@ describe('HardwareRegistryService — Custom Plugin Registration', () => {
     expect(renderer).toBe(DummyComponent);
   });
 });
+

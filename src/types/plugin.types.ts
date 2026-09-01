@@ -91,3 +91,4 @@ export interface HardwarePluginDefinition {
     hasSlidingDrawer?: boolean;
   };
 }
+

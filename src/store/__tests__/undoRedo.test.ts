@@ -170,3 +170,4 @@ describe('useConfiguratorStore — Undo / Redo History Stack', () => {
     expect(useConfiguratorStore.getState().installedHardware[0].position[1]).toBe(initialY);
   });
 });
+
