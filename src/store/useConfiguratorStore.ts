@@ -21,6 +21,11 @@ import {
   HardwareProps,
 } from '../types/rack.types';
 import { CableType } from '../types/cable.types';
+import {
+  VoltageStandard,
+  BreakerRating,
+  FeedFailoverMode,
+} from '../types/electrical.types';
 import { hardwareRegistry } from '../utils/hardwareRegistry';
 import { generateDevicePorts } from '../utils/portLayout';
 import {
@@ -118,6 +123,14 @@ export interface ConfiguratorState {
   removeRack: (rackId: string) => void;
   setActiveRackId: (rackId: string) => void;
   setRackName: (rackId: string, name: string) => void;
+
+  // -- 3-Phase Electrical Simulation ------------------------------------
+  voltageStandard: VoltageStandard;
+  breakerRating: BreakerRating;
+  feedFailoverMode: FeedFailoverMode;
+  setVoltageStandard: (standard: VoltageStandard) => void;
+  setBreakerRating: (rating: BreakerRating) => void;
+  setFeedFailoverMode: (mode: FeedFailoverMode) => void;
 
   // -- Temporal History (Undo / Redo) -----------------------------------
   past: RackSnapshot[];
@@ -301,6 +314,25 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
   selectedHardwareId: null,
   selectedCableId: null,
   selectCable: (id) => set({ selectedCableId: id }),
+
+  // 3-Phase Electrical Simulation State
+  voltageStandard: 'EU-230V-400V',
+  breakerRating: 32,
+  feedFailoverMode: 'normal',
+
+  setVoltageStandard: (voltageStandard) =>
+    set((state) => {
+      const history = pushHistory(state);
+      return { ...history, voltageStandard };
+    }),
+
+  setBreakerRating: (breakerRating) =>
+    set((state) => {
+      const history = pushHistory(state);
+      return { ...history, breakerRating };
+    }),
+
+  setFeedFailoverMode: (feedFailoverMode) => set({ feedFailoverMode }),
 
   activeCableType: 'copper-cat6',
   activeCableColor: '#3b82f6',
