@@ -82,25 +82,23 @@ describe('useConfiguratorStore — viewMode initial state', () => {
 });
 
 describe('useConfiguratorStore — toggleViewMode action', () => {
-  it('flips "3D" → "blueprint"', () => {
+  it('flips "3D" → "blueprint" → "thermal" → "3D"', () => {
     const { toggleViewMode } = useConfiguratorStore.getState();
     toggleViewMode();
     expect(useConfiguratorStore.getState().viewMode).toBe('blueprint');
-  });
-
-  it('flips "blueprint" → "3D" on a second call', () => {
-    useConfiguratorStore.setState({ viewMode: 'blueprint' });
-    useConfiguratorStore.getState().toggleViewMode();
+    toggleViewMode();
+    expect(useConfiguratorStore.getState().viewMode).toBe('thermal');
+    toggleViewMode();
     expect(useConfiguratorStore.getState().viewMode).toBe('3D');
   });
 
-  it('cycles correctly through four toggles', () => {
+  it('cycles correctly through six toggles back to start', () => {
     const start = useConfiguratorStore.getState().viewMode;
     expect(start).toBe('3D');
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 6; i++) {
       useConfiguratorStore.getState().toggleViewMode();
     }
-    // Four toggles = even number = back to start.
+    // Six toggles = 2 full cycles = back to start.
     expect(useConfiguratorStore.getState().viewMode).toBe(start);
   });
 });

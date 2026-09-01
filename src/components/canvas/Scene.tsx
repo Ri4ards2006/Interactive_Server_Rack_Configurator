@@ -30,6 +30,7 @@ import { RackLabels } from './Rack/RackLabels';
 import { HardwareMapper } from './HardwareMapper';
 import { CableMapper } from './Hardware/PatchCable';
 import { DropIndicator } from './interactions/DropIndicator';
+import { ThermalHeatmapOverlay } from './Thermal/ThermalHeatmapOverlay';
 import {
   useConfiguratorStore,
   RACK_UNIT_HEIGHT,
@@ -147,6 +148,9 @@ export function SceneContents({ orbitRef }: SceneContentsProps) {
 
       {/* Global Patch Cables spanning any bays */}
       <CableMapper />
+
+      {/* 3D Thermal Heatmap Overlay */}
+      <ThermalHeatmapOverlay />
 
       {/* Ghost preview during drag */}
       <DropIndicator />

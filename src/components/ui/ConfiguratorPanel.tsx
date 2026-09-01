@@ -17,6 +17,14 @@ import { useShallow } from 'zustand/react/shallow';
 import { useConfiguratorStore, RACK_UNIT_HEIGHT } from '../../store/useConfiguratorStore';
 import type { HardwareProps, HardwareType } from '../../types/rack.types';
 import {
+  VOLTAGE_STANDARDS,
+  VoltageStandard,
+  BreakerRating,
+  FeedFailoverMode,
+} from '../../types/electrical.types';
+import { evaluateRackElectrical } from '../../utils/electricalCalculations';
+import { evaluateRackThermal } from '../../utils/thermalCalculations';
+import {
   CABLE_COLOR_PRESETS,
   CABLE_MEDIUM_SPECS,
   CableType,
@@ -326,6 +334,19 @@ export function ConfiguratorPanel() {
   const removeCable = useConfiguratorStore((s) => s.removeCable);
   const clearAllCables = useConfiguratorStore((s) => s.clearAllCables);
 
+  // 3-Phase Electrical Simulation State
+  const voltageStandard = useConfiguratorStore((s) => s.voltageStandard);
+  const breakerRating = useConfiguratorStore((s) => s.breakerRating);
+  const feedFailoverMode = useConfiguratorStore((s) => s.feedFailoverMode);
+  const setVoltageStandard = useConfiguratorStore((s) => s.setVoltageStandard);
+  const setBreakerRating = useConfiguratorStore((s) => s.setBreakerRating);
+  const setFeedFailoverMode = useConfiguratorStore((s) => s.setFeedFailoverMode);
+
+  // Thermal Simulation State
+  const setViewMode = useConfiguratorStore((s) => s.setViewMode);
+  const ambientTemperatureC = useConfiguratorStore((s) => s.ambientTemperatureC);
+  const setAmbientTemperature = useConfiguratorStore((s) => s.setAmbientTemperature);
+
   // Derived states
   const { usedUnits, totalPowerDraw } = useMemo(() => {
     let used = 0;
@@ -336,6 +357,25 @@ export function ConfiguratorPanel() {
     }
     return { usedUnits: used, totalPowerDraw: power };
   }, [installedHardware]);
+
+  // Electrical report for active rack
+  const electricalReport = useMemo(() => {
+    return evaluateRackElectrical(installedHardware, {
+      rackId: activeRackId,
+      voltageStandard,
+      breakerRating,
+      failoverMode: feedFailoverMode,
+    });
+  }, [installedHardware, activeRackId, voltageStandard, breakerRating, feedFailoverMode]);
+
+  // Thermal report for active rack
+  const thermalReport = useMemo(() => {
+    return evaluateRackThermal(installedHardware, {
+      rackId: activeRackId,
+      capacity,
+      ambientColdAisleTempC: ambientTemperatureC,
+    });
+  }, [installedHardware, activeRackId, capacity, ambientTemperatureC]);
 
   const { rowPower, rowUsedUnits, rowCapacity, rowHardwareCount } = useMemo(() => {
     let p = 0;
@@ -572,28 +612,39 @@ export function ConfiguratorPanel() {
           <label className="text-[9px] uppercase tracking-wider text-zinc-500">
             [ VIEWPORT_SETTING ]
           </label>
-          <div className="grid grid-cols-2 p-0.5 bg-zinc-950 rounded border border-zinc-800/60">
+          <div className="grid grid-cols-3 p-0.5 bg-zinc-950 rounded border border-zinc-800/60">
             <button
               type="button"
-              onClick={() => viewMode === 'blueprint' && toggleViewMode()}
-              className={`py-1.5 text-center text-xs font-mono rounded transition-all focus:outline-none cursor-pointer ${
+              onClick={() => setViewMode('3D')}
+              className={`py-1 text-center text-[10px] font-mono rounded transition-all focus:outline-none cursor-pointer ${
                 viewMode === '3D'
-                  ? 'bg-zinc-850 text-zinc-100 border border-zinc-700/50 shadow-sm'
+                  ? 'bg-zinc-850 text-zinc-100 border border-zinc-700/50 shadow-sm font-bold'
                   : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              3D RENDER
+              3D
             </button>
             <button
               type="button"
-              onClick={() => viewMode === '3D' && toggleViewMode()}
-              className={`py-1.5 text-center text-xs font-mono rounded transition-all focus:outline-none cursor-pointer ${
+              onClick={() => setViewMode('blueprint')}
+              className={`py-1 text-center text-[10px] font-mono rounded transition-all focus:outline-none cursor-pointer ${
                 viewMode === 'blueprint'
-                  ? 'bg-cyan-950/20 text-cyan-400 border border-cyan-800/40 shadow-sm'
+                  ? 'bg-cyan-950/40 text-cyan-400 border border-cyan-800/40 shadow-sm font-bold'
                   : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
               BLUEPRINT
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('thermal')}
+              className={`py-1 text-center text-[10px] font-mono rounded transition-all focus:outline-none cursor-pointer ${
+                viewMode === 'thermal'
+                  ? 'bg-red-950/50 text-red-300 border border-red-800/60 shadow-sm font-bold animate-pulse'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              THERMAL
             </button>
           </div>
         </div>
@@ -777,6 +828,92 @@ export function ConfiguratorPanel() {
               </span>
             </div>
           </div>
+        </div>
+
+        {/* ----------------------------------------------------------------- */}
+        {/* THERMAL & AIRFLOW SIMULATION                                     */}
+        {/* ----------------------------------------------------------------- */}
+        <div className="py-4 border-b border-zinc-800/60 flex flex-col gap-3 font-mono">
+          <div className="flex justify-between items-center">
+            <label className="text-[9px] uppercase tracking-wider text-zinc-500">
+              [ THERMAL & AIRFLOW ]
+            </label>
+            <span
+              className={`text-[8px] px-1.5 py-0.5 rounded border font-bold uppercase ${
+                thermalReport.hasThrottlingCritical
+                  ? 'bg-red-950/80 border-red-500 text-red-300 animate-pulse'
+                  : thermalReport.hasRecirculationWarning
+                  ? 'bg-amber-950/60 border-amber-500 text-amber-300'
+                  : 'bg-emerald-950/60 border-emerald-500 text-emerald-300'
+              }`}
+            >
+              {thermalReport.hasThrottlingCritical
+                ? '🔥 THERMAL THROTTLE'
+                : thermalReport.hasRecirculationWarning
+                ? '⚠️ HOT RECIRCULATION'
+                : '✓ COOL AIRFLOW'}
+            </span>
+          </div>
+
+          {/* Cold Aisle Ambient Temperature Slider */}
+          <div className="flex flex-col gap-1">
+            <div className="flex justify-between text-[8px] uppercase text-zinc-500">
+              <span>COLD_AISLE_INTAKE:</span>
+              <span className="text-zinc-200 font-bold">{ambientTemperatureC.toFixed(1)}°C</span>
+            </div>
+            <input
+              type="range"
+              min={15}
+              max={32}
+              step={0.5}
+              value={ambientTemperatureC}
+              onChange={(e) => setAmbientTemperature(parseFloat(e.target.value))}
+              className="w-full accent-cyan-500 h-1 bg-zinc-900 rounded appearance-none cursor-pointer border border-zinc-800/80"
+            />
+          </div>
+
+          {/* Thermal Telemetry Gauges */}
+          <div className="grid grid-cols-3 gap-1.5 text-[8px]">
+            <div className="bg-zinc-950/60 border border-zinc-850 rounded p-1.5">
+              <span className="text-zinc-500 block">MAX EXHAUST</span>
+              <span
+                className={`text-[10px] font-bold block mt-0.5 ${
+                  thermalReport.maxExhaustTempC > 50
+                    ? 'text-red-400'
+                    : thermalReport.maxExhaustTempC > 40
+                    ? 'text-amber-400'
+                    : 'text-emerald-400'
+                }`}
+              >
+                {thermalReport.maxExhaustTempC}°C
+              </span>
+            </div>
+            <div className="bg-zinc-950/60 border border-zinc-850 rounded p-1.5">
+              <span className="text-zinc-500 block">TOTAL AIRFLOW</span>
+              <span className="text-[10px] font-bold text-cyan-400 block mt-0.5">
+                {thermalReport.totalAirflowCFM.toLocaleString()} CFM
+              </span>
+            </div>
+            <div className="bg-zinc-950/60 border border-zinc-850 rounded p-1.5">
+              <span className="text-zinc-500 block">BYPASS GAPS</span>
+              <span
+                className={`text-[10px] font-bold block mt-0.5 ${
+                  thermalReport.openUnblankedSlotsCount > 0 ? 'text-amber-400' : 'text-emerald-400'
+                }`}
+              >
+                {thermalReport.openUnblankedSlotsCount > 0
+                  ? `${thermalReport.openUnblankedSlotsCount} OPEN U`
+                  : 'SEALED'}
+              </span>
+            </div>
+          </div>
+
+          {/* Recirculation Warning Alert Box */}
+          {thermalReport.hasRecirculationWarning && (
+            <div className="p-2 bg-amber-950/20 border border-amber-800/40 rounded text-[8px] text-amber-300/90 leading-tight">
+              ⚠️ <span className="font-bold">Hot-air bypass recirculation detected:</span> {thermalReport.openUnblankedSlotsCount} unpopulated U-slots allow exhaust hot air to loop into front server inlets. Install blanking panels to prevent thermal throttling.
+            </div>
+          )}
         </div>
 
         {/* Add hardware catalog */}
