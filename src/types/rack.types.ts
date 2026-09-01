@@ -51,6 +51,8 @@ export interface HardwareProps {
   ports?: PortProps[];
 }
 
+import type { CableType } from './cable.types';
+
 export interface CableProps {
   id: string;
   fromDevice: string;
@@ -58,6 +60,9 @@ export interface CableProps {
   toDevice: string;
   toPort: string;
   color: string;
+  type?: CableType;
+  lengthMeters?: number;
+  hasBendViolation?: boolean;
 }
 
 /**
