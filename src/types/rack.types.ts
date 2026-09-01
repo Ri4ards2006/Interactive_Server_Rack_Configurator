@@ -51,6 +51,8 @@ export interface HardwareProps {
   position: Vec3; // meters, in rack-local space
   ports?: PortProps[];
   rackId?: string; // Parent rack ID if multi-rack
+  customModelUrl?: string; // Blob URL or path for custom user-uploaded .glb/.gltf
+  modelName?: string;
 }
 
 export interface CableProps {

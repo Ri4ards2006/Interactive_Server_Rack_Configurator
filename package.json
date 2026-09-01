@@ -2,11 +2,15 @@
   "name": "interactive_server_rack_configurator",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "bin": {
+    "rack-lint": "./bin/rack-lint.js"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "rack-lint": "node ./bin/rack-lint.js"
   },
   "repository": {
     "type": "git",

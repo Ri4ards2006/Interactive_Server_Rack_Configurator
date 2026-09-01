@@ -1,0 +1,35 @@
+name: Datacenter Rack Compliance & Safety Lint
+
+on:
+  push:
+    branches: [ main, feat/** ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  rack-lint:
+    name: Validate Rack Layout & Physical Safety
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run TypeScript Strict Verification
+        run: npx tsc --noEmit
+
+      - name: Run Comprehensive Test Suite
+        run: npx vitest run
+
+      - name: Run CLI Linter Help & Self-Test
+        run: node ./bin/rack-lint.js --help
+
