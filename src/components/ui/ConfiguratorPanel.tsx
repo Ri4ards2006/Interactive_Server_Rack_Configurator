@@ -36,6 +36,12 @@ import {
   downloadFile,
 } from '../../utils/exporters/bomExporter';
 import { exportRackElevationSVG } from '../../utils/exporters/elevationExporter';
+import { NetBoxClient } from '../../utils/netbox/netboxClient';
+import type { NetBoxSite, NetBoxRack } from '../../types/netbox.types';
+import {
+  MOCK_NETBOX_SITES,
+  MOCK_NETBOX_RACKS,
+} from '../../utils/netbox/mockNetboxData';
 import { checkDropValidity } from '../../utils/rackLayout';
 
 interface CatalogItem {
@@ -297,6 +303,20 @@ export function ConfiguratorPanel() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
+  // NetBox DCIM State
+  const [isNetBoxModalOpen, setIsNetBoxModalOpen] = useState(false);
+  const [netboxUrl, setNetboxUrl] = useState('https://netbox.company.internal');
+  const [netboxToken, setNetboxToken] = useState('demo-token-0123456789abcdef');
+  const [netboxMockMode, setNetboxMockMode] = useState(true);
+  const [selectedSiteId, setSelectedSiteId] = useState<number>(1);
+  const [selectedRackId, setSelectedRackId] = useState<number>(101);
+  const [netboxSites] = useState<NetBoxSite[]>(MOCK_NETBOX_SITES);
+  const [netboxRacks] = useState<NetBoxRack[]>(MOCK_NETBOX_RACKS);
+  const [netboxLogs, setNetboxLogs] = useState<string[]>([
+    'DCIM client initialized (Mock offline mode ready).',
+  ]);
+  const [isNetBoxSyncing, setIsNetBoxSyncing] = useState(false);
+
   // Array → useShallow so a fresh reference but identical contents does
   // NOT re-render the panel.
   const installedHardware = useConfiguratorStore(
@@ -328,6 +348,7 @@ export function ConfiguratorPanel() {
   const addRack = useConfiguratorStore((s) => s.addRack);
   const removeRack = useConfiguratorStore((s) => s.removeRack);
   const setActiveRackId = useConfiguratorStore((s) => s.setActiveRackId);
+  const importNetBoxRack = useConfiguratorStore((s) => s.importNetBoxRack);
 
   // Cabling state & actions
   const cables = useConfiguratorStore(useShallow((s) => s.cables));
@@ -467,6 +488,57 @@ export function ConfiguratorPanel() {
     window.dispatchEvent(new CustomEvent('export-gltf', { detail: { filename } }));
   };
 
+  // NetBox DCIM Synchronization Handlers
+  const handleNetBoxImport = async () => {
+    setIsNetBoxSyncing(true);
+    setNetboxLogs((prev) => [
+      ...prev,
+      `[NETBOX] Connecting to ${netboxMockMode ? 'Mock DCIM' : netboxUrl}...`,
+      `[NETBOX] Fetching rack ${selectedRackId} layout and device elevation...`,
+    ]);
+
+    try {
+      const client = new NetBoxClient({
+        url: netboxUrl,
+        token: netboxToken,
+        mockMode: netboxMockMode,
+      });
+      const { rack, cables: importedCables } = await client.importRack(selectedRackId);
+      importNetBoxRack(rack, importedCables);
+      setNetboxLogs((prev) => [
+        ...prev,
+        `[NETBOX] SUCCESS: Imported "${rack.name}" (${rack.installedHardware.length} devices, ${importedCables.length} cables).`,
+      ]);
+    } catch (err: any) {
+      setNetboxLogs((prev) => [...prev, `[NETBOX ERROR] ${err?.message || String(err)}`]);
+    } finally {
+      setIsNetBoxSyncing(false);
+    }
+  };
+
+  const handleNetBoxPush = async () => {
+    setIsNetBoxSyncing(true);
+    const activeRack = racks.find((r) => r.id === activeRackId) || racks[0];
+    setNetboxLogs((prev) => [
+      ...prev,
+      `[NETBOX] Pushing "${activeRack.name}" to DCIM inventory...`,
+    ]);
+
+    try {
+      const client = new NetBoxClient({
+        url: netboxUrl,
+        token: netboxToken,
+        mockMode: netboxMockMode,
+      });
+      const result = await client.syncRackToNetBox(activeRack);
+      setNetboxLogs((prev) => [...prev, ...result.logs]);
+    } catch (err: any) {
+      setNetboxLogs((prev) => [...prev, `[NETBOX ERROR] ${err?.message || String(err)}`]);
+    } finally {
+      setIsNetBoxSyncing(false);
+    }
+  };
+
   // Stacking shifter controls
   const canShiftUp = useMemo(() => {
     if (!selectedHardware) return false;
@@ -600,6 +672,17 @@ export function ConfiguratorPanel() {
         >
           <span>💾</span>
           <span className="font-bold">EXPORT</span>
+        </button>
+
+        {/* NetBox DCIM Modal Trigger */}
+        <button
+          type="button"
+          onClick={() => setIsNetBoxModalOpen(true)}
+          title="NetBox DCIM REST API Import & Sync"
+          className="px-3 py-1.5 text-[10px] font-mono rounded bg-emerald-950/60 text-emerald-300 hover:bg-emerald-900/80 border border-emerald-500/60 shadow-[0_0_10px_rgba(16,185,129,0.2)] flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shrink-0"
+        >
+          <span>🌐</span>
+          <span className="font-bold">NETBOX DCIM</span>
         </button>
       </div>
 
@@ -1393,6 +1476,167 @@ export function ConfiguratorPanel() {
 
             <div className="text-[8px] text-zinc-600 text-center border-t border-zinc-800/80 pt-2">
               All exports generated locally with zero cloud telemetry transmission.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------------------------------------------------------- */}
+      {/* NETBOX DCIM SYNCHRONIZATION MODAL DIALOG                          */}
+      {/* ----------------------------------------------------------------- */}
+      {isNetBoxModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-950 border border-zinc-700/80 rounded-lg max-w-2xl w-full p-6 font-mono text-zinc-200 shadow-2xl flex flex-col gap-4">
+            <div className="flex justify-between items-start border-b border-zinc-800 pb-3">
+              <div>
+                <h3 className="text-sm font-bold tracking-widest text-emerald-400 uppercase flex items-center gap-2">
+                  <span>🌐</span> [ NETBOX DCIM REST API SYNC ]
+                </h3>
+                <span className="text-[10px] text-zinc-500 block mt-0.5">
+                  BIDIRECTIONAL RACK ELEVATIONS, HARDWARE ASSETS & PATCH CABLING
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNetBoxModalOpen(false)}
+                className="text-zinc-500 hover:text-red-400 text-xs px-2 py-1 rounded border border-zinc-800 hover:border-red-500/50 cursor-pointer transition-colors"
+              >
+                [ ESC / CLOSE ]
+              </button>
+            </div>
+
+            {/* Connection Configuration */}
+            <div className="p-3 bg-zinc-900/60 border border-zinc-800 rounded flex flex-col gap-2.5 text-[9px]">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-zinc-300 uppercase">SERVER CONFIGURATION</span>
+                <label className="flex items-center gap-1.5 cursor-pointer text-cyan-400">
+                  <input
+                    type="checkbox"
+                    checked={netboxMockMode}
+                    onChange={(e) => setNetboxMockMode(e.target.checked)}
+                    className="accent-emerald-500"
+                  />
+                  <span>MOCK / OFFLINE DEMO MODE</span>
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-zinc-500 block mb-0.5">ENDPOINT URL:</label>
+                  <input
+                    type="text"
+                    disabled={netboxMockMode}
+                    value={netboxUrl}
+                    onChange={(e) => setNetboxUrl(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-[10px] text-zinc-200 disabled:opacity-50"
+                  />
+                </div>
+                <div>
+                  <label className="text-zinc-500 block mb-0.5">API TOKEN:</label>
+                  <input
+                    type="password"
+                    disabled={netboxMockMode}
+                    value={netboxToken}
+                    onChange={(e) => setNetboxToken(e.target.value)}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-[10px] text-zinc-200 disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              {/* Site and Rack Selection */}
+              <div className="grid grid-cols-2 gap-2 mt-1">
+                <div>
+                  <label className="text-zinc-500 block mb-0.5">TARGET DATACENTER SITE:</label>
+                  <select
+                    value={selectedSiteId}
+                    onChange={(e) => setSelectedSiteId(Number(e.target.value))}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-[10px] text-zinc-200"
+                  >
+                    {netboxSites.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-zinc-500 block mb-0.5">TARGET RACK BAY:</label>
+                  <select
+                    value={selectedRackId}
+                    onChange={(e) => setSelectedRackId(Number(e.target.value))}
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-[10px] text-zinc-200"
+                  >
+                    {netboxRacks.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name} ({r.u_height}U)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Sync Action Buttons */}
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                disabled={isNetBoxSyncing}
+                onClick={handleNetBoxImport}
+                className="p-3 bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-500/60 rounded text-left transition-all cursor-pointer flex flex-col gap-1 active:scale-[0.98] disabled:opacity-50"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-300">⬇ IMPORT FROM NETBOX</span>
+                  <span className="text-[8px] bg-emerald-900 border border-emerald-700 text-emerald-300 px-1 rounded">PULL DCIM</span>
+                </div>
+                <span className="text-[9px] text-zinc-400">
+                  Load selected rack elevation, hardware assets, and patch cables directly into the 3D scene.
+                </span>
+              </button>
+
+              <button
+                type="button"
+                disabled={isNetBoxSyncing}
+                onClick={handleNetBoxPush}
+                className="p-3 bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/60 rounded text-left transition-all cursor-pointer flex flex-col gap-1 active:scale-[0.98] disabled:opacity-50"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-cyan-300">⬆ SYNC ACTIVE RACK TO NETBOX</span>
+                  <span className="text-[8px] bg-cyan-900 border border-cyan-700 text-cyan-300 px-1 rounded">PUSH DCIM</span>
+                </div>
+                <span className="text-[9px] text-zinc-400">
+                  Serialize and push currently active 3D layout modifications to the NetBox inventory.
+                </span>
+              </button>
+            </div>
+
+            {/* Live Sync Logs Terminal */}
+            <div className="flex flex-col gap-1">
+              <div className="flex justify-between items-center text-[8px] text-zinc-500">
+                <span>DCIM SYNC CONSOLE LOG:</span>
+                <button
+                  type="button"
+                  onClick={() => setNetboxLogs([])}
+                  className="hover:text-zinc-300 underline cursor-pointer"
+                >
+                  CLEAR
+                </button>
+              </div>
+              <div className="bg-black/90 border border-zinc-850 rounded p-2.5 h-28 overflow-y-auto font-mono text-[9px] text-zinc-400 flex flex-col gap-1 custom-scrollbar">
+                {netboxLogs.map((log, idx) => (
+                  <div
+                    key={idx}
+                    className={
+                      log.includes('ERROR')
+                        ? 'text-red-400'
+                        : log.includes('SUCCESS')
+                        ? 'text-emerald-400 font-bold'
+                        : 'text-zinc-400'
+                    }
+                  >
+                    {log}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
