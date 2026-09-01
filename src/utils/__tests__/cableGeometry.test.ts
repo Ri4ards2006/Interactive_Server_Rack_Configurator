@@ -156,3 +156,4 @@ describe('cableGeometry — Port Position & Topology Checks', () => {
     expect(isPortConnectionValid('switch', 'firewall')).toBe(true);
   });
 });
+

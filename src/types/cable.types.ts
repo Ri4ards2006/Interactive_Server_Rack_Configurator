@@ -125,3 +125,4 @@ export interface CableEvaluation {
   minBendRadiusFoundMm: number;
   hasBendViolation: boolean;
 }
+
