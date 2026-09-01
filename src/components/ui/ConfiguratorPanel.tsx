@@ -29,6 +29,13 @@ import {
   CABLE_MEDIUM_SPECS,
   CableType,
 } from '../../types/cable.types';
+import {
+  generateBOMReport,
+  exportBOMToJSON,
+  exportBOMToCSV,
+  downloadFile,
+} from '../../utils/exporters/bomExporter';
+import { exportRackElevationSVG } from '../../utils/exporters/elevationExporter';
 import { checkDropValidity } from '../../utils/rackLayout';
 
 interface CatalogItem {
@@ -288,6 +295,7 @@ const catalogItems: CatalogItem[] = [
 export function ConfiguratorPanel() {
   const [isZen, setIsZen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
   // Array → useShallow so a fresh reference but identical contents does
   // NOT re-render the panel.
@@ -435,6 +443,30 @@ export function ConfiguratorPanel() {
     }));
   };
 
+  // Multi-format export actions
+  const handleExportCSV = () => {
+    const report = generateBOMReport(racks, cables);
+    const csv = exportBOMToCSV(report);
+    downloadFile(`datacenter_bom_${new Date().toISOString().slice(0, 10)}.csv`, csv, 'text/csv;charset=utf-8');
+  };
+
+  const handleExportJSON = () => {
+    const report = generateBOMReport(racks, cables);
+    const json = exportBOMToJSON(report);
+    downloadFile(`datacenter_bom_${new Date().toISOString().slice(0, 10)}.json`, json, 'application/json;charset=utf-8');
+  };
+
+  const handleExportSVG = () => {
+    const activeRack = racks.find((r) => r.id === activeRackId) || racks[0];
+    const filename = `${activeRack.name.toLowerCase().replace(/\s+/g, '_')}_elevation.svg`;
+    exportRackElevationSVG(activeRack, filename);
+  };
+
+  const handleExportGLTF = () => {
+    const filename = `datacenter_scene_${new Date().toISOString().slice(0, 10)}.glb`;
+    window.dispatchEvent(new CustomEvent('export-gltf', { detail: { filename } }));
+  };
+
   // Stacking shifter controls
   const canShiftUp = useMemo(() => {
     if (!selectedHardware) return false;
@@ -558,6 +590,17 @@ export function ConfiguratorPanel() {
             <span>REDO</span>
           </button>
         </div>
+
+        {/* Export Modal Trigger */}
+        <button
+          type="button"
+          onClick={() => setIsExportModalOpen(true)}
+          title="Export BOM (CSV/JSON), 3D GLB, or 2D Vector SVG Elevation"
+          className="px-3 py-1.5 text-[10px] font-mono rounded bg-cyan-950/60 text-cyan-300 hover:bg-cyan-900/80 border border-cyan-500/60 shadow-[0_0_10px_rgba(6,182,212,0.2)] flex items-center gap-1.5 transition-all cursor-pointer active:scale-95 shrink-0"
+        >
+          <span>💾</span>
+          <span className="font-bold">EXPORT</span>
+        </button>
       </div>
 
       {/* ----------------------------------------------------------------- */}
@@ -1228,6 +1271,132 @@ export function ConfiguratorPanel() {
           </div>
         )}
       </aside>
+
+      {/* ----------------------------------------------------------------- */}
+      {/* EXPORT MODAL DIALOG                                               */}
+      {/* ----------------------------------------------------------------- */}
+      {isExportModalOpen && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-950 border border-zinc-700/80 rounded-lg max-w-xl w-full p-6 font-mono text-zinc-200 shadow-2xl flex flex-col gap-5">
+            <div className="flex justify-between items-start border-b border-zinc-800 pb-3">
+              <div>
+                <h3 className="text-sm font-bold tracking-widest text-cyan-400 uppercase">
+                  [ DATA CENTER EXPORT ENGINE ]
+                </h3>
+                <span className="text-[10px] text-zinc-500 block mt-0.5">
+                  MULTI-FORMAT CAD, BOM & VECTOR DRAWING SERIALIZER
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExportModalOpen(false)}
+                className="text-zinc-500 hover:text-red-400 text-xs px-2 py-1 rounded border border-zinc-800 hover:border-red-500/50 cursor-pointer transition-colors"
+              >
+                [ ESC / CLOSE ]
+              </button>
+            </div>
+
+            {/* Summary Telemetry Card */}
+            <div className="grid grid-cols-4 gap-2 bg-zinc-900/80 border border-zinc-800 p-3 rounded text-[9px]">
+              <div>
+                <span className="text-zinc-500 block">TOTAL BAYS</span>
+                <span className="text-xs font-bold text-zinc-200 block mt-0.5">{racks.length} RACKS</span>
+              </div>
+              <div>
+                <span className="text-zinc-500 block">TOTAL POWER</span>
+                <span className="text-xs font-bold text-emerald-400 block mt-0.5">{rowPower.toLocaleString()} W</span>
+              </div>
+              <div>
+                <span className="text-zinc-500 block">HEAT OUTPUT</span>
+                <span className="text-xs font-bold text-amber-400 block mt-0.5">{Math.round(rowPower * 3.41214).toLocaleString()} BTU/h</span>
+              </div>
+              <div>
+                <span className="text-zinc-500 block">PATCH RUNS</span>
+                <span className="text-xs font-bold text-cyan-400 block mt-0.5">{cables.length} RUNS</span>
+              </div>
+            </div>
+
+            {/* Export Actions Grid */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* 1. BOM CSV */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleExportCSV();
+                  setIsExportModalOpen(false);
+                }}
+                className="p-4 bg-zinc-900/60 hover:bg-zinc-850 border border-zinc-800 hover:border-cyan-500 rounded text-left transition-all group cursor-pointer flex flex-col gap-1"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-cyan-400 group-hover:text-cyan-300">📄 BOM (CSV)</span>
+                  <span className="text-[8px] bg-cyan-950 border border-cyan-800 text-cyan-400 px-1.5 py-0.5 rounded">SPREADSHEET</span>
+                </div>
+                <span className="text-[9px] text-zinc-400 mt-1">
+                  Export complete Bill of Materials as RFC-4180 CSV with chassis, power, phase, and port schedule.
+                </span>
+              </button>
+
+              {/* 2. BOM JSON */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleExportJSON();
+                  setIsExportModalOpen(false);
+                }}
+                className="p-4 bg-zinc-900/60 hover:bg-zinc-850 border border-zinc-800 hover:border-emerald-500 rounded text-left transition-all group cursor-pointer flex flex-col gap-1"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-400 group-hover:text-emerald-300">📋 BOM (JSON)</span>
+                  <span className="text-[8px] bg-emerald-950 border border-emerald-800 text-emerald-400 px-1.5 py-0.5 rounded">SCHEMA</span>
+                </div>
+                <span className="text-[9px] text-zinc-400 mt-1">
+                  Export full structured datacenter JSON object for DCIM and automation pipeline ingestion.
+                </span>
+              </button>
+
+              {/* 3. 2D SVG Elevation */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleExportSVG();
+                  setIsExportModalOpen(false);
+                }}
+                className="p-4 bg-zinc-900/60 hover:bg-zinc-850 border border-zinc-800 hover:border-purple-500 rounded text-left transition-all group cursor-pointer flex flex-col gap-1"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-purple-400 group-hover:text-purple-300">📐 RACK ELEVATION (SVG)</span>
+                  <span className="text-[8px] bg-purple-950 border border-purple-800 text-purple-400 px-1.5 py-0.5 rounded">2D VECTOR</span>
+                </div>
+                <span className="text-[9px] text-zinc-400 mt-1">
+                  Vector 2D rack elevation drawing with EIA-310-D rail markers, mounting holes, and title block.
+                </span>
+              </button>
+
+              {/* 4. 3D GLTF / GLB */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleExportGLTF();
+                  setIsExportModalOpen(false);
+                }}
+                className="p-4 bg-zinc-900/60 hover:bg-zinc-850 border border-zinc-800 hover:border-amber-500 rounded text-left transition-all group cursor-pointer flex flex-col gap-1"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-amber-400 group-hover:text-amber-300">🧊 3D SCENE (.GLB)</span>
+                  <span className="text-[8px] bg-amber-950 border border-amber-800 text-amber-400 px-1.5 py-0.5 rounded">CAD / 3D</span>
+                </div>
+                <span className="text-[9px] text-zinc-400 mt-1">
+                  Export complete 3D scene meshes, server bezels, and 3D patch cable curves for CAD / Blender.
+                </span>
+              </button>
+            </div>
+
+            <div className="text-[8px] text-zinc-600 text-center border-t border-zinc-800/80 pt-2">
+              All exports generated locally with zero cloud telemetry transmission.
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

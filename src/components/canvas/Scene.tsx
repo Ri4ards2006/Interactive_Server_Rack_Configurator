@@ -31,6 +31,7 @@ import { HardwareMapper } from './HardwareMapper';
 import { CableMapper } from './Hardware/PatchCable';
 import { DropIndicator } from './interactions/DropIndicator';
 import { ThermalHeatmapOverlay } from './Thermal/ThermalHeatmapOverlay';
+import { exportSceneToGLTF } from '../../utils/exporters/gltfExporter';
 import {
   useConfiguratorStore,
   RACK_UNIT_HEIGHT,
@@ -54,7 +55,17 @@ export function SceneContents({ orbitRef }: SceneContentsProps) {
   const viewMode = useConfiguratorStore((s) => s.viewMode);
   const racks = useConfiguratorStore(useShallow((s) => s.racks));
   const activeRackId = useConfiguratorStore((s) => s.activeRackId);
-  const { camera } = useThree();
+  const { camera, scene } = useThree();
+
+  useEffect(() => {
+    const handleExport = (e: Event) => {
+      const customEvent = e as CustomEvent<{ filename?: string }>;
+      const filename = customEvent.detail?.filename || 'datacenter_layout.glb';
+      exportSceneToGLTF(scene, filename);
+    };
+    window.addEventListener('export-gltf', handleExport);
+    return () => window.removeEventListener('export-gltf', handleExport);
+  }, [scene]);
 
   const activeRack = useMemo(
     () => racks.find((r) => r.id === activeRackId) || racks[0],
