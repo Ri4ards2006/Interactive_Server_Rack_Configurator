@@ -159,3 +159,4 @@ describe('netboxClient — NetBoxClient Mock API Operations', () => {
     expect(result.logs.some((l) => l.includes('Device switch'))).toBe(true);
   });
 });
+

@@ -195,3 +195,4 @@ export const MOCK_NETBOX_CABLES: NetBoxCable[] = [
     length_unit: 'm',
   },
 ];
+
