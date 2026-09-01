@@ -110,7 +110,12 @@ export interface ConfiguratorState {
   clearAllCables: () => void;
 
   /** Visual presentation mode */
-  viewMode: '3D' | 'blueprint';
+  viewMode: '3D' | 'blueprint' | 'thermal';
+  setViewMode: (mode: '3D' | 'blueprint' | 'thermal') => void;
+
+  /** Ambient cold aisle temperature in Celsius */
+  ambientTemperatureC: number;
+  setAmbientTemperature: (temp: number) => void;
 
   /** Active dragging state for interactive cable routing */
   activeDraggingCable: DraggingCableProps | null;
@@ -420,6 +425,9 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
     }),
 
   viewMode: '3D',
+  setViewMode: (viewMode) => set({ viewMode }),
+  ambientTemperatureC: 20.0,
+  setAmbientTemperature: (ambientTemperatureC) => set({ ambientTemperatureC }),
   activeDraggingCable: null,
   hddBays: {
     'default-chassis-1': {
@@ -1014,7 +1022,12 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
 
   toggleViewMode: () =>
     set((state) => ({
-      viewMode: state.viewMode === '3D' ? 'blueprint' : '3D',
+      viewMode:
+        state.viewMode === '3D'
+          ? 'blueprint'
+          : state.viewMode === 'blueprint'
+          ? 'thermal'
+          : '3D',
     })),
 
   setRackType: (rackType, rackId) =>
