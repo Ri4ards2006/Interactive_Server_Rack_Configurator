@@ -42,3 +42,4 @@ export interface RackThermalReport {
   chassisThermals: ChassisThermalData[];
   uGradients: USlotThermalData[];
 }
+

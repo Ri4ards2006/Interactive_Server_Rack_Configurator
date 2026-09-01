@@ -130,3 +130,4 @@ describe('thermalCalculations — Rack Thermal Evaluation & Recirculation', () =
     expect(report.chassisThermals[0].isThermalThrottling).toBe(true);
   });
 });
+
