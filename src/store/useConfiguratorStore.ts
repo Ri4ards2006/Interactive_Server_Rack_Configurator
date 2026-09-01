@@ -2,20 +2,19 @@
  * Global Zustand store for the Interactive Server Rack Configurator.
  *
  * Architectural notes:
- * - The data shape (`capacity`, `installedHardware`, `cables`) is inherited
- *   from `RackState` — the documented persistence shape.
- * - Ephemeral UI state (`selectedHardwareId`, `viewMode`) lives on
- *   `ConfiguratorState`.
+ * - Supports Multi-Rack bayed row layouts (`racks: RackInstance[]`, `activeRackId`).
+ * - Cross-rack 3D cable routing across adjacent cabinets with pitch `BAY_SPACING = 0.8m`.
+ * - Ephemeral UI state (`selectedHardwareId`, `viewMode`) lives on `ConfiguratorState`.
  * - High-frequency drag updates reside in `useDragStore.ts` to prevent
  *   re-rendering the full R3F component tree during 60 Hz pointer moves.
- * - Undo/Redo temporal state history stack tracks mutations to `RackSnapshot`
- *   with a 50-step capacity buffer.
+ * - Undo/Redo temporal state history stack tracks mutations to `RackSnapshot`.
  */
 
 import { create } from 'zustand';
 import {
   HardwareType,
-  RackState,
+  RackFrameType,
+  RackInstance,
   Vec3,
   CableProps,
   PortProps,
@@ -46,19 +45,19 @@ export interface DraggingCableProps {
 
 /**
  * Snapshot structure captured for Undo/Redo history.
- * Excludes transient selections, drag-in-flight state, and UI preferences.
  */
 export interface RackSnapshot {
-  capacity: number;
-  installedHardware: HardwareProps[];
+  racks: RackInstance[];
+  activeRackId: string;
   cables: CableProps[];
-  rackType: '2-post' | '4-post' | 'cabinet';
-  isDoorOpen: boolean;
   hddBays: Record<string, Record<number, HddBayState>>;
 }
 
 /** 1U height in meters (~4.445 cm, the EIA-310 standard). */
 export const RACK_UNIT_HEIGHT = 0.04445;
+
+/** Standard EIA cabinet bay pitch in meters (800mm). */
+export const BAY_SPACING = 0.8;
 
 /** Shared chassis geometry constants */
 export const CHASSIS_WIDTH = 0.44;
@@ -68,7 +67,22 @@ export const SELECTION_OUTLINE_INSET = 0.01;
 
 const MAX_HISTORY = 50;
 
-export interface ConfiguratorState extends RackState {
+export interface ConfiguratorState {
+  /** Array of all bayed rack instances */
+  racks: RackInstance[];
+
+  /** Currently selected/focused rack ID */
+  activeRackId: string;
+
+  /** Active rack helper getters / proxy properties for backward compatibility */
+  capacity: number;
+  rackType: RackFrameType;
+  isDoorOpen: boolean;
+  installedHardware: HardwareProps[];
+
+  /** All patched cable connections across any rack */
+  cables: CableProps[];
+
   /** ID of the hardware currently selected */
   selectedHardwareId: string | null;
 
@@ -99,11 +113,11 @@ export interface ConfiguratorState extends RackState {
   /** HDD hot-swap caddy registry */
   hddBays: Record<string, Record<number, HddBayState>>;
 
-  /** Rack frame style */
-  rackType: '2-post' | '4-post' | 'cabinet';
-
-  /** Front door open state */
-  isDoorOpen: boolean;
+  // -- Multi-Rack Management ---------------------------------------------
+  addRack: (name?: string, rackType?: RackFrameType) => void;
+  removeRack: (rackId: string) => void;
+  setActiveRackId: (rackId: string) => void;
+  setRackName: (rackId: string, name: string) => void;
 
   // -- Temporal History (Undo / Redo) -----------------------------------
   past: RackSnapshot[];
@@ -121,13 +135,13 @@ export interface ConfiguratorState extends RackState {
   removeHddFromBay: (deviceId: string, bayIndex: number) => void;
   insertHddIntoBay: (deviceId: string, bayIndex: number) => void;
   simulateHddFailure: () => void;
-  addHardware: (type: HardwareType, rackUnits: number) => void;
+  addHardware: (type: HardwareType, rackUnits: number, rackId?: string) => void;
   removeHardware: (id: string) => void;
-  updateHardwarePosition: (id: string, position: Vec3) => void;
+  updateHardwarePosition: (id: string, position: Vec3, rackId?: string) => void;
   selectHardware: (id: string | null) => void;
   toggleViewMode: () => void;
-  setRackType: (type: '2-post' | '4-post' | 'cabinet') => void;
-  setDoorOpen: (isOpen: boolean) => void;
+  setRackType: (type: RackFrameType, rackId?: string) => void;
+  setDoorOpen: (isOpen: boolean, rackId?: string) => void;
   addCable: (
     fromDevice: string,
     fromPort: string,
@@ -155,25 +169,28 @@ const generateId = (): string =>
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 /**
- * Deep clone state properties to form an immutable history snapshot.
+ * Deep clone multi-rack state to form an immutable history snapshot.
  */
 const createSnapshot = (state: {
-  capacity: number;
-  installedHardware: HardwareProps[];
+  racks: RackInstance[];
+  activeRackId: string;
   cables: CableProps[];
-  rackType: '2-post' | '4-post' | 'cabinet';
-  isDoorOpen: boolean;
   hddBays: Record<string, Record<number, HddBayState>>;
 }): RackSnapshot => ({
-  capacity: state.capacity,
-  installedHardware: state.installedHardware.map((h) => ({
-    ...h,
-    position: [...h.position] as Vec3,
-    ports: h.ports?.map((p: PortProps) => ({ ...p, position: [...p.position] as Vec3 })),
+  racks: state.racks.map((r) => ({
+    ...r,
+    position: [...r.position] as Vec3,
+    installedHardware: r.installedHardware.map((h) => ({
+      ...h,
+      position: [...h.position] as Vec3,
+      ports: h.ports?.map((p: PortProps) => ({
+        ...p,
+        position: [...p.position] as Vec3,
+      })),
+    })),
   })),
+  activeRackId: state.activeRackId,
   cables: state.cables.map((c) => ({ ...c })),
-  rackType: state.rackType,
-  isDoorOpen: state.isDoorOpen,
   hddBays: Object.fromEntries(
     Object.entries(state.hddBays).map(([devId, bays]) => [
       devId,
@@ -216,8 +233,13 @@ const defaultSwitchPorts = generatePortsForDevice('switch', 0.3)!;
 defaultSwitchPorts.find((p) => p.id === 'port-1')!.cableId = 'default-cable-1';
 defaultSwitchPorts.find((p) => p.id === 'port-12')!.cableId = 'default-cable-2';
 
-export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
+const defaultInitialRack: RackInstance = {
+  id: 'default-rack-1',
+  name: 'Rack A',
   capacity: 42,
+  rackType: '2-post',
+  isDoorOpen: false,
+  position: [0, 0, 0],
   installedHardware: [
     {
       id: 'default-chassis-1',
@@ -227,6 +249,7 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       depth: 0.6,
       position: [0, 0.04445, 0],
       ports: defaultServerPorts,
+      rackId: 'default-rack-1',
     },
     {
       id: 'default-switch-1',
@@ -236,8 +259,21 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       depth: 0.3,
       position: [0, 0.111125, 0],
       ports: defaultSwitchPorts,
+      rackId: 'default-rack-1',
     },
   ],
+};
+
+export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
+  racks: [defaultInitialRack],
+  activeRackId: 'default-rack-1',
+
+  // Active rack proxy properties
+  capacity: 42,
+  rackType: '2-post',
+  isDoorOpen: false,
+  installedHardware: defaultInitialRack.installedHardware,
+
   cables: [
     {
       id: 'default-cable-1',
@@ -287,17 +323,44 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
         ...history,
         cables: state.cables.map((c) => {
           if (c.id !== id) return c;
-          const fromDev = state.installedHardware.find((h) => h.id === c.fromDevice);
-          const toDev = state.installedHardware.find((h) => h.id === c.toDevice);
-          const p1 = fromDev ? getPortWorldPosition(fromDev, c.fromPort) : null;
-          const p2 = toDev ? getPortWorldPosition(toDev, c.toPort) : null;
+
+          // Locate devices and parent racks
+          let fromDev: HardwareProps | undefined;
+          let fromRack: RackInstance | undefined;
+          let toDev: HardwareProps | undefined;
+          let toRack: RackInstance | undefined;
+
+          for (const r of state.racks) {
+            const fd = r.installedHardware.find((h) => h.id === c.fromDevice);
+            if (fd) {
+              fromDev = fd;
+              fromRack = r;
+            }
+            const td = r.installedHardware.find((h) => h.id === c.toDevice);
+            if (td) {
+              toDev = td;
+              toRack = r;
+            }
+          }
+
+          const p1 =
+            fromDev && fromRack
+              ? getPortWorldPosition(fromDev, c.fromPort, fromRack.position)
+              : null;
+          const p2 =
+            toDev && toRack
+              ? getPortWorldPosition(toDev, c.toPort, toRack.position)
+              : null;
+
           let lengthMeters = c.lengthMeters;
           let hasBendViolation = c.hasBendViolation;
+
           if (p1 && p2) {
             const res = calculateCableCurve(p1, p2, type);
             lengthMeters = res.evaluation.lengthMeters;
             hasBendViolation = res.evaluation.hasBendViolation;
           }
+
           return { ...c, type, lengthMeters, hasBendViolation };
         }),
       };
@@ -310,6 +373,13 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
         ...history,
         cables: [],
         selectedCableId: null,
+        racks: state.racks.map((r) => ({
+          ...r,
+          installedHardware: r.installedHardware.map((h) => ({
+            ...h,
+            ports: h.ports?.map((p) => ({ ...p, cableId: null })),
+          })),
+        })),
         installedHardware: state.installedHardware.map((h) => ({
           ...h,
           ports: h.ports?.map((p) => ({ ...p, cableId: null })),
@@ -331,8 +401,97 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       7: { status: 'inserted', isFailed: false },
     },
   },
-  rackType: '2-post',
-  isDoorOpen: false,
+
+  // -- Multi-Rack Actions ------------------------------------------------
+  addRack: (name, rackType = '2-post') =>
+    set((state) => {
+      const history = pushHistory(state);
+      const newIndex = state.racks.length;
+      const newRackId = generateId();
+      const defaultName = name || `Rack ${String.fromCharCode(65 + newIndex)}`;
+      const position: Vec3 = [newIndex * BAY_SPACING, 0, 0];
+
+      const newRack: RackInstance = {
+        id: newRackId,
+        name: defaultName,
+        capacity: 42,
+        rackType,
+        isDoorOpen: false,
+        position,
+        installedHardware: [],
+      };
+
+      return {
+        ...history,
+        racks: [...state.racks, newRack],
+        activeRackId: newRackId,
+        capacity: newRack.capacity,
+        rackType: newRack.rackType,
+        isDoorOpen: newRack.isDoorOpen,
+        installedHardware: [],
+        selectedHardwareId: null,
+      };
+    }),
+
+  removeRack: (rackId) =>
+    set((state) => {
+      if (state.racks.length <= 1) return {}; // Prevent removing sole rack
+      const history = pushHistory(state);
+
+      const targetRack = state.racks.find((r) => r.id === rackId);
+      const removedHardwareIds = new Set(
+        targetRack?.installedHardware.map((h) => h.id) || [],
+      );
+
+      const remainingRacks = state.racks
+        .filter((r) => r.id !== rackId)
+        .map((r, idx) => ({
+          ...r,
+          position: [idx * BAY_SPACING, 0, 0] as Vec3,
+        }));
+
+      const newActiveRack =
+        state.activeRackId === rackId ? remainingRacks[0] : state.racks.find((r) => r.id === state.activeRackId)!;
+
+      const remainingCables = state.cables.filter(
+        (c) => !removedHardwareIds.has(c.fromDevice) && !removedHardwareIds.has(c.toDevice),
+      );
+
+      return {
+        ...history,
+        racks: remainingRacks,
+        activeRackId: newActiveRack.id,
+        capacity: newActiveRack.capacity,
+        rackType: newActiveRack.rackType,
+        isDoorOpen: newActiveRack.isDoorOpen,
+        installedHardware: newActiveRack.installedHardware,
+        cables: remainingCables,
+        selectedHardwareId: null,
+      };
+    }),
+
+  setActiveRackId: (rackId) =>
+    set((state) => {
+      const target = state.racks.find((r) => r.id === rackId);
+      if (!target) return {};
+      return {
+        activeRackId: rackId,
+        capacity: target.capacity,
+        rackType: target.rackType,
+        isDoorOpen: target.isDoorOpen,
+        installedHardware: target.installedHardware,
+        selectedHardwareId: null,
+      };
+    }),
+
+  setRackName: (rackId, name) =>
+    set((state) => {
+      const history = pushHistory(state);
+      return {
+        ...history,
+        racks: state.racks.map((r) => (r.id === rackId ? { ...r, name } : r)),
+      };
+    }),
 
   // Temporal history initial state
   past: [],
@@ -347,27 +506,24 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       const newPast = state.past.slice(0, -1);
       const currentSnapshot = createSnapshot(state);
 
+      const activeRack =
+        previous.racks.find((r) => r.id === previous.activeRackId) || previous.racks[0];
+
       return {
         past: newPast,
         future: [currentSnapshot, ...state.future.slice(0, MAX_HISTORY - 1)],
         canUndo: newPast.length > 0,
         canRedo: true,
-        capacity: previous.capacity,
-        installedHardware: previous.installedHardware,
+        racks: previous.racks,
+        activeRackId: previous.activeRackId,
+        capacity: activeRack.capacity,
+        rackType: activeRack.rackType,
+        isDoorOpen: activeRack.isDoorOpen,
+        installedHardware: activeRack.installedHardware,
         cables: previous.cables,
-        rackType: previous.rackType,
-        isDoorOpen: previous.isDoorOpen,
         hddBays: previous.hddBays,
-        selectedHardwareId:
-          state.selectedHardwareId &&
-          previous.installedHardware.some((h) => h.id === state.selectedHardwareId)
-            ? state.selectedHardwareId
-            : null,
-        selectedCableId:
-          state.selectedCableId &&
-          previous.cables.some((c) => c.id === state.selectedCableId)
-            ? state.selectedCableId
-            : null,
+        selectedHardwareId: null,
+        selectedCableId: null,
       };
     }),
 
@@ -378,16 +534,21 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       const newFuture = state.future.slice(1);
       const currentSnapshot = createSnapshot(state);
 
+      const activeRack =
+        next.racks.find((r) => r.id === next.activeRackId) || next.racks[0];
+
       return {
         past: [...state.past.slice(-MAX_HISTORY + 1), currentSnapshot],
         future: newFuture,
         canUndo: true,
         canRedo: newFuture.length > 0,
-        capacity: next.capacity,
-        installedHardware: next.installedHardware,
+        racks: next.racks,
+        activeRackId: next.activeRackId,
+        capacity: activeRack.capacity,
+        rackType: activeRack.rackType,
+        isDoorOpen: activeRack.isDoorOpen,
+        installedHardware: activeRack.installedHardware,
         cables: next.cables,
-        rackType: next.rackType,
-        isDoorOpen: next.isDoorOpen,
         hddBays: next.hddBays,
       };
     }),
@@ -406,10 +567,13 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
   clearHistory: () =>
     set({ past: [], future: [], canUndo: false, canRedo: false }),
 
-  addHardware: (type, rackUnits) =>
+  addHardware: (type, rackUnits, rackId) =>
     set((state) => {
       const history = pushHistory(state);
-      const currentHighestY = state.installedHardware.reduce((acc, h) => {
+      const targetRackId = rackId || state.activeRackId;
+      const targetRack = state.racks.find((r) => r.id === targetRackId) || state.racks[0];
+
+      const currentHighestY = targetRack.installedHardware.reduce((acc, h) => {
         const top = h.position[1] + (h.rackUnits * RACK_UNIT_HEIGHT) / 2;
         return Math.max(acc, top);
       }, 0);
@@ -430,21 +594,29 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       }
 
       const newId = generateId();
+      const newChassis: HardwareProps = {
+        id: newId,
+        type,
+        rackUnits,
+        powerDraw: specs.powerDraw,
+        depth: specs.depth,
+        position: [0, centerY, 0],
+        ports: specs.ports,
+        rackId: targetRackId,
+      };
+
+      const updatedRacks = state.racks.map((r) =>
+        r.id === targetRackId
+          ? { ...r, installedHardware: [...r.installedHardware, newChassis] }
+          : r,
+      );
+
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
 
       return {
         ...history,
-        installedHardware: [
-          ...state.installedHardware,
-          {
-            id: newId,
-            type,
-            rackUnits,
-            powerDraw: specs.powerDraw,
-            depth: specs.depth,
-            position: [0, centerY, 0],
-            ports: specs.ports,
-          },
-        ],
+        racks: updatedRacks,
+        installedHardware: activeRack.installedHardware,
         hddBays: {
           ...state.hddBays,
           [newId]: bays,
@@ -465,9 +637,17 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       const nextHddBays = { ...state.hddBays };
       delete nextHddBays[id];
 
+      const updatedRacks = state.racks.map((r) => ({
+        ...r,
+        installedHardware: r.installedHardware.filter((h) => h.id !== id),
+      }));
+
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId) || updatedRacks[0];
+
       return {
         ...history,
-        installedHardware: state.installedHardware.filter((h) => h.id !== id),
+        racks: updatedRacks,
+        installedHardware: activeRack.installedHardware,
         cables: remainingCables,
         hddBays: nextHddBays,
         selectedHardwareId:
@@ -545,7 +725,8 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
 
   simulateHddFailure: () =>
     set((state) => {
-      const eligible = state.installedHardware.filter(
+      const allHardware = state.racks.flatMap((r) => r.installedHardware);
+      const eligible = allHardware.filter(
         (h) => h.type === 'server' || h.type === 'nas',
       );
       if (eligible.length === 0) return {};
@@ -590,10 +771,32 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       const finalColor = color || state.activeCableColor;
       const finalType = type || state.activeCableType;
 
-      const fromDev = state.installedHardware.find((h) => h.id === fromDevice);
-      const toDev = state.installedHardware.find((h) => h.id === toDevice);
-      const p1 = fromDev ? getPortWorldPosition(fromDev, fromPort) : null;
-      const p2 = toDev ? getPortWorldPosition(toDev, toPort) : null;
+      let fromDev: HardwareProps | undefined;
+      let fromRack: RackInstance | undefined;
+      let toDev: HardwareProps | undefined;
+      let toRack: RackInstance | undefined;
+
+      for (const r of state.racks) {
+        const fd = r.installedHardware.find((h) => h.id === fromDevice);
+        if (fd) {
+          fromDev = fd;
+          fromRack = r;
+        }
+        const td = r.installedHardware.find((h) => h.id === toDevice);
+        if (td) {
+          toDev = td;
+          toRack = r;
+        }
+      }
+
+      const p1 =
+        fromDev && fromRack
+          ? getPortWorldPosition(fromDev, fromPort, fromRack.position)
+          : null;
+      const p2 =
+        toDev && toRack
+          ? getPortWorldPosition(toDev, toPort, toRack.position)
+          : null;
 
       let lengthMeters: number | undefined;
       let hasBendViolation = false;
@@ -604,8 +807,29 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
         hasBendViolation = res.evaluation.hasBendViolation;
       }
 
+      const updatedRacks = state.racks.map((r) => ({
+        ...r,
+        installedHardware: r.installedHardware.map((h) => {
+          if (h.id === fromDevice || h.id === toDevice) {
+            return {
+              ...h,
+              ports: h.ports?.map((p) => {
+                if (h.id === fromDevice && p.id === fromPort) return { ...p, cableId };
+                if (h.id === toDevice && p.id === toPort) return { ...p, cableId };
+                return p;
+              }),
+            };
+          }
+          return h;
+        }),
+      }));
+
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
+
       return {
         ...history,
+        racks: updatedRacks,
+        installedHardware: activeRack.installedHardware,
         cables: [
           ...state.cables,
           {
@@ -620,19 +844,6 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
             hasBendViolation,
           },
         ],
-        installedHardware: state.installedHardware.map((h) => {
-          if (h.id === fromDevice || h.id === toDevice) {
-            return {
-              ...h,
-              ports: h.ports?.map((p) => {
-                if (h.id === fromDevice && p.id === fromPort) return { ...p, cableId };
-                if (h.id === toDevice && p.id === toPort) return { ...p, cableId };
-                return p;
-              }),
-            };
-          }
-          return h;
-        }),
       };
     }),
 
@@ -641,11 +852,10 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       const targetCable = state.cables.find((c) => c.id === id);
       if (!targetCable) return {};
       const history = pushHistory(state);
-      return {
-        ...history,
-        cables: state.cables.filter((c) => c.id !== id),
-        selectedCableId: state.selectedCableId === id ? null : state.selectedCableId,
-        installedHardware: state.installedHardware.map((h) => {
+
+      const updatedRacks = state.racks.map((r) => ({
+        ...r,
+        installedHardware: r.installedHardware.map((h) => {
           if (h.id === targetCable.fromDevice || h.id === targetCable.toDevice) {
             return {
               ...h,
@@ -657,12 +867,30 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
           }
           return h;
         }),
+      }));
+
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
+
+      return {
+        ...history,
+        racks: updatedRacks,
+        installedHardware: activeRack.installedHardware,
+        cables: state.cables.filter((c) => c.id !== id),
+        selectedCableId: state.selectedCableId === id ? null : state.selectedCableId,
       };
     }),
 
   unpatchPort: (deviceId, portId) =>
     set((state) => {
-      const dev = state.installedHardware.find((h) => h.id === deviceId);
+      let dev: HardwareProps | undefined;
+      for (const r of state.racks) {
+        const found = r.installedHardware.find((h) => h.id === deviceId);
+        if (found) {
+          dev = found;
+          break;
+        }
+      }
+
       const port = dev?.ports?.find((p) => p.id === portId);
       if (!port || !port.cableId) return {};
 
@@ -671,11 +899,9 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       if (!targetCable) return {};
       const history = pushHistory(state);
 
-      return {
-        ...history,
-        cables: state.cables.filter((c) => c.id !== cableId),
-        selectedCableId: state.selectedCableId === cableId ? null : state.selectedCableId,
-        installedHardware: state.installedHardware.map((h) => {
+      const updatedRacks = state.racks.map((r) => ({
+        ...r,
+        installedHardware: r.installedHardware.map((h) => {
           if (h.id === targetCable.fromDevice || h.id === targetCable.toDevice) {
             return {
               ...h,
@@ -687,6 +913,16 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
           }
           return h;
         }),
+      }));
+
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
+
+      return {
+        ...history,
+        racks: updatedRacks,
+        installedHardware: activeRack.installedHardware,
+        cables: state.cables.filter((c) => c.id !== cableId),
+        selectedCableId: state.selectedCableId === cableId ? null : state.selectedCableId,
       };
     }),
 
@@ -722,12 +958,25 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
 
   stopDraggingCable: () => set({ activeDraggingCable: null }),
 
-  updateHardwarePosition: (id, position) =>
-    set((state) => ({
-      installedHardware: state.installedHardware.map((h) =>
-        h.id === id ? { ...h, position } : h,
-      ),
-    })),
+  updateHardwarePosition: (id, position, rackId) =>
+    set((state) => {
+      const targetRackId = rackId || state.activeRackId;
+      const updatedRacks = state.racks.map((r) =>
+        r.id === targetRackId
+          ? {
+              ...r,
+              installedHardware: r.installedHardware.map((h) =>
+                h.id === id ? { ...h, position } : h,
+              ),
+            }
+          : r,
+      );
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
+      return {
+        racks: updatedRacks,
+        installedHardware: activeRack.installedHardware,
+      };
+    }),
 
   selectHardware: (id) => set({ selectedHardwareId: id }),
 
@@ -736,15 +985,33 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       viewMode: state.viewMode === '3D' ? 'blueprint' : '3D',
     })),
 
-  setRackType: (rackType) =>
+  setRackType: (rackType, rackId) =>
     set((state) => {
       const history = pushHistory(state);
-      return { ...history, rackType };
+      const targetRackId = rackId || state.activeRackId;
+      const updatedRacks = state.racks.map((r) =>
+        r.id === targetRackId ? { ...r, rackType } : r,
+      );
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
+      return {
+        ...history,
+        racks: updatedRacks,
+        rackType: activeRack.rackType,
+      };
     }),
 
-  setDoorOpen: (isDoorOpen) =>
+  setDoorOpen: (isDoorOpen, rackId) =>
     set((state) => {
       const history = pushHistory(state);
-      return { ...history, isDoorOpen };
+      const targetRackId = rackId || state.activeRackId;
+      const updatedRacks = state.racks.map((r) =>
+        r.id === targetRackId ? { ...r, isDoorOpen } : r,
+      );
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
+      return {
+        ...history,
+        racks: updatedRacks,
+        isDoorOpen: activeRack.isDoorOpen,
+      };
     }),
 }));

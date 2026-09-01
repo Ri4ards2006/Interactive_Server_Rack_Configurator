@@ -37,6 +37,18 @@ import type { HardwareProps } from '../../types/rack.types';
 // '3D' baseline each time.
 beforeEach(() => {
   useConfiguratorStore.setState({
+    racks: [
+      {
+        id: 'default-rack-1',
+        name: 'Rack A',
+        capacity: 42,
+        rackType: '2-post',
+        isDoorOpen: false,
+        position: [0, 0, 0],
+        installedHardware: [],
+      },
+    ],
+    activeRackId: 'default-rack-1',
     capacity: 42,
     installedHardware: [],
     cables: [],
