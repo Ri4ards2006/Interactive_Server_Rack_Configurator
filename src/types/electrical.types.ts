@@ -82,3 +82,4 @@ export interface RackElectricalEvaluation {
   hasOverloadWarning: boolean;
   hasBreakerTrip: boolean;
 }
+
