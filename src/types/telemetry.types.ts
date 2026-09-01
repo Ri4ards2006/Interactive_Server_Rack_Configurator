@@ -62,3 +62,4 @@ export interface LiveTelemetrySummary {
   criticalCount: number;
   totalNetworkThroughputMbps: number;
 }
+

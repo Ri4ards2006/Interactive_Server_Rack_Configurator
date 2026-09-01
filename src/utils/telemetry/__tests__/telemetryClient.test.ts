@@ -148,3 +148,4 @@ describe('mockTelemetryStream — Physics-informed Generator', () => {
     expect(srv.networkRxMbps).toBeGreaterThan(0);
   });
 });
+
