@@ -44,6 +44,7 @@ import {
   MOCK_NETBOX_RACKS,
 } from '../../utils/netbox/mockNetboxData';
 import { checkDropValidity } from '../../utils/rackLayout';
+import { calculateTotalCoolingMetrics } from '../../utils/roomLayout';
 
 interface CatalogItem {
   type: HardwareType;
@@ -379,6 +380,20 @@ export function ConfiguratorPanel() {
   const ambientTemperatureC = useConfiguratorStore((s) => s.ambientTemperatureC);
   const setAmbientTemperature = useConfiguratorStore((s) => s.setAmbientTemperature);
 
+  // Data Hall Room Planning State
+  const isRoomViewEnabled = useConfiguratorStore((s) => s.isRoomViewEnabled);
+  const dataHallConfig = useConfiguratorStore((s) => s.dataHallConfig);
+  const toggleRoomView = useConfiguratorStore((s) => s.toggleRoomView);
+  const setRoomDimensions = useConfiguratorStore((s) => s.setRoomDimensions);
+  const setContainmentConfig = useConfiguratorStore((s) => s.setContainmentConfig);
+  const addCracUnit = useConfiguratorStore((s) => s.addCracUnit);
+  const removeCracUnit = useConfiguratorStore((s) => s.removeCracUnit);
+
+  // Room Cooling vs IT Load Report
+  const roomCoolingReport = useMemo(() => {
+    return calculateTotalCoolingMetrics(racks, dataHallConfig.cracUnits);
+  }, [racks, dataHallConfig.cracUnits]);
+
   // Derived states
   const { usedUnits, totalPowerDraw } = useMemo(() => {
     let used = 0;
@@ -590,6 +605,20 @@ export function ConfiguratorPanel() {
           className="px-3.5 py-1.5 border border-zinc-700 bg-zinc-900/90 hover:bg-zinc-800 text-[11px] font-mono tracking-widest text-cyan-400 uppercase rounded cursor-pointer transition-all shadow-md active:scale-95 shrink-0"
         >
           {isZen ? '[ SHOW PANEL ]' : '[ TOGGLE PANEL ]'}
+        </button>
+
+        {/* Data Hall Room Toggle Button */}
+        <button
+          type="button"
+          onClick={toggleRoomView}
+          className={`px-3 py-1.5 text-[10px] font-mono tracking-wider rounded border transition-all cursor-pointer shadow-md active:scale-95 shrink-0 ${
+            isRoomViewEnabled
+              ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 font-bold'
+              : 'bg-zinc-900/90 border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+          }`}
+          title="Toggle Data Hall 3D Room Planning Environment"
+        >
+          {isRoomViewEnabled ? '🏢 DATA HALL [ON]' : '🏢 DATA HALL [OFF]'}
         </button>
 
         {/* Rack Bay Switcher Tabs */}
@@ -1052,6 +1081,173 @@ export function ConfiguratorPanel() {
           {thermalReport.hasRecirculationWarning && (
             <div className="p-2 bg-amber-950/20 border border-amber-800/40 rounded text-[8px] text-amber-300/90 leading-tight">
               ⚠️ <span className="font-bold">Hot-air bypass recirculation detected:</span> {thermalReport.openUnblankedSlotsCount} unpopulated U-slots allow exhaust hot air to loop into front server inlets. Install blanking panels to prevent thermal throttling.
+            </div>
+          )}
+        </div>
+
+        {/* Data Hall Room Planner & Containment Section */}
+        <div className="py-4 border-b border-zinc-800/60 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <label className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold flex items-center gap-1.5">
+              <span>[ 🏢 DATA_HALL_PLANNER ]</span>
+            </label>
+            <button
+              type="button"
+              onClick={toggleRoomView}
+              className={`text-[8px] px-2 py-0.5 rounded border font-bold uppercase cursor-pointer transition-all ${
+                isRoomViewEnabled
+                  ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
+                  : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {isRoomViewEnabled ? 'ENABLED' : 'DISABLED'}
+            </button>
+          </div>
+
+          {isRoomViewEnabled && (
+            <div className="flex flex-col gap-2.5 bg-zinc-950/40 p-2 rounded border border-zinc-850">
+              {/* Room Dimensions Inputs */}
+              <div className="grid grid-cols-3 gap-1.5 text-[8px]">
+                <div>
+                  <span className="text-zinc-500 block">WIDTH (m):</span>
+                  <input
+                    type="number"
+                    min={4}
+                    max={40}
+                    step={1}
+                    value={dataHallConfig.roomDimensions.widthMeters}
+                    onChange={(e) =>
+                      setRoomDimensions({ widthMeters: Math.max(4, parseFloat(e.target.value) || 12) })
+                    }
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-200 text-right"
+                  />
+                </div>
+                <div>
+                  <span className="text-zinc-500 block">DEPTH (m):</span>
+                  <input
+                    type="number"
+                    min={4}
+                    max={40}
+                    step={1}
+                    value={dataHallConfig.roomDimensions.depthMeters}
+                    onChange={(e) =>
+                      setRoomDimensions({ depthMeters: Math.max(4, parseFloat(e.target.value) || 10) })
+                    }
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-200 text-right"
+                  />
+                </div>
+                <div>
+                  <span className="text-zinc-500 block">PLENUM (m):</span>
+                  <input
+                    type="number"
+                    min={0.2}
+                    max={1.5}
+                    step={0.1}
+                    value={dataHallConfig.roomDimensions.raisedFloorHeightMeters}
+                    onChange={(e) =>
+                      setRoomDimensions({ raisedFloorHeightMeters: parseFloat(e.target.value) || 0.6 })
+                    }
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-200 text-right"
+                  />
+                </div>
+              </div>
+
+              {/* Cold-Aisle Containment Canopy Controls */}
+              <div className="p-2 bg-zinc-900/80 border border-zinc-800 rounded flex flex-col gap-1.5 text-[8px]">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-cyan-400 uppercase">COLD-AISLE CONTAINMENT</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setContainmentConfig({ enabled: !dataHallConfig.containment.enabled })
+                    }
+                    className={`px-1.5 py-0.5 rounded font-bold uppercase cursor-pointer ${
+                      dataHallConfig.containment.enabled
+                        ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/60'
+                        : 'bg-zinc-800 text-zinc-500'
+                    }`}
+                  >
+                    {dataHallConfig.containment.enabled ? 'CANOPY ON' : 'CANOPY OFF'}
+                  </button>
+                </div>
+
+                {dataHallConfig.containment.enabled && (
+                  <div className="flex items-center justify-between mt-1 pt-1 border-t border-zinc-800/80">
+                    <span className="text-zinc-400">SLIDING END DOORS:</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setContainmentConfig({ doorOpen: !dataHallConfig.containment.doorOpen })
+                      }
+                      className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase cursor-pointer ${
+                        dataHallConfig.containment.doorOpen
+                          ? 'bg-amber-950 text-amber-300 border border-amber-800/60'
+                          : 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
+                      }`}
+                    >
+                      {dataHallConfig.containment.doorOpen ? 'OPEN (UNSEALED)' : 'CLOSED (SEALED)'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* CRAC Cooling Redundancy Report */}
+              <div className="p-2 bg-zinc-900/80 border border-zinc-800 rounded flex flex-col gap-1 text-[8px]">
+                <div className="flex justify-between items-center border-b border-zinc-800 pb-1">
+                  <span className="font-bold text-zinc-300 uppercase">CRAC COOLING CAPACITY</span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded font-bold uppercase ${
+                      roomCoolingReport.status === 'healthy'
+                        ? 'bg-emerald-950 text-emerald-400'
+                        : roomCoolingReport.status === 'warning'
+                        ? 'bg-amber-950 text-amber-400'
+                        : 'bg-red-950 text-red-400 animate-pulse'
+                    }`}
+                  >
+                    {roomCoolingReport.coolingRedundancy} ({roomCoolingReport.status.toUpperCase()})
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1 mt-0.5">
+                  <div>
+                    <span className="text-zinc-500 block text-[7px]">IT LOAD:</span>
+                    <span className="text-zinc-200 font-bold">{roomCoolingReport.totalItPowerKw} kW</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500 block text-[7px]">CRAC CAPACITY:</span>
+                    <span className="text-cyan-400 font-bold">{roomCoolingReport.totalCoolingCapacityKw} kW</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500 block text-[7px]">THERMAL RESERVE:</span>
+                    <span className="text-emerald-400 font-bold">{roomCoolingReport.coolingReserveKw} kW</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500 block text-[7px]">TOTAL CRAC UNITS:</span>
+                    <span className="text-zinc-200 font-bold">{dataHallConfig.cracUnits.length} UNITS</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    addCracUnit({
+                      name: `CRAC Unit ${dataHallConfig.cracUnits.length + 1}`,
+                      coolingKw: 60,
+                      airflowCFM: 9500,
+                      position: [
+                        (dataHallConfig.cracUnits.length % 2 === 0 ? -1 : 1) * 4.5,
+                        0,
+                        -3.5 + Math.floor(dataHallConfig.cracUnits.length / 2) * 2.0,
+                      ],
+                      orientation: 0,
+                      status: 'online',
+                    })
+                  }
+                  className="w-full mt-1 py-1 text-center bg-cyan-950/60 hover:bg-cyan-900 border border-cyan-800/60 text-cyan-300 rounded font-bold uppercase cursor-pointer transition-all active:scale-95"
+                >
+                  + ADD PERIMETER CRAC (60 kW)
+                </button>
+              </div>
             </div>
           )}
         </div>

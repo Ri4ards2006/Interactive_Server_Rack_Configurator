@@ -34,6 +34,7 @@ The whole application runs client-side in your browser, with an optional zero-de
 | Feature | Description |
 |---|---|
 | 🌐 **Quad-Mode Rendering** | Seamlessly toggle between photoreal **`3D PBR`** (HDR reflections, contact shadows), CAD **`BLUEPRINT`** (flat fills, cyan-300 wireframes, U1..U42 rail labels), **`THERMAL HEATMAP`** (ASHRAE inlet/exhaust faceplates & plume volumes), and **`2D NETWORK TOPOLOGY`** (Spine/Leaf/Compute graph map with VLAN and IP tagging). |
+| 🏢 **Data Hall Room Planning** | 600×600mm raised floor tile grid with automatic perforated airflow tiles, cold-aisle containment canopies with sliding end-doors, and perimeter CRAC/CRAH cooling units with IT heat load balance. |
 | 🧲 **Multi-Rack Baying** | Side-by-side multi-cabinet layouts (`Rack A`, `Rack B`, ...). Seamlessly add, rename, switch active bays, and route inter-rack patch cabling across bay boundaries ($X = \text{bayIndex} \times 0.65\,\text{m}$). |
 | 🔌 **3D Cable Routing & Physics** | Interactive port-to-port patching (`Cat6`, `Cat6A`, `OM4 Multimode Fiber`, `OS2 Single-mode Fiber`, `10G DAC`). Rigid 60mm forward strain-relief clearance, gravitational catenary sag curves, and real-time bend radius violation checks against physical manufacturer tolerances. |
 | 💻 **L2 / L3 Network Layer & DCIM** | Comprehensive device network configuration: Hostnames, Management IPv4/IPv6 & Subnet CIDRs, Default Gateways, Link Speeds (`1G` to `100G`), Port Admin States (`UP`/`DOWN`), and IEEE 802.1Q Access / Trunk VLAN tagging. |
@@ -55,7 +56,7 @@ The whole application runs client-side in your browser, with an optional zero-de
 | **Build & Styling** | Vite 8 · Tailwind CSS v4 | Lightning-fast esbuild pipeline with zero-runtime utility styling. |
 | **3D Rendering** | Three.js · `@react-three/fiber` v9 · `@react-three/drei` v10 | WebGL scene graph with custom PBR materials, procedural cables, and HDR environment maps. |
 | **State Architecture** | Zustand v5 | Split state: **persistent** `useConfiguratorStore` for rack topologies and **transient** `useDragStore` for 60 Hz cursor drag snapping. |
-| **Testing** | Vitest 2.1 | 296 unit tests covering layout invariants, electrical calculations, thermal physics, and linter rules. |
+| **Testing** | Vitest 2.1 | 305 unit tests covering layout invariants, electrical calculations, thermal physics, and linter rules. |
 | **CI Automation** | Node.js CLI & GitHub Actions | Headless compliance verification without WebGL or browser DOM dependencies. |
 
 ---

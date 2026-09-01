@@ -32,6 +32,9 @@ import { CableMapper } from './Hardware/PatchCable';
 import { DropIndicator } from './interactions/DropIndicator';
 import { ThermalHeatmapOverlay } from './Thermal/ThermalHeatmapOverlay';
 import { NetworkTopologyView } from './Topology/NetworkTopologyView';
+import { DataHallFloor } from './Room/DataHallFloor';
+import { AisleContainmentMesh } from './Room/AisleContainmentMesh';
+import { CracUnitMesh } from './Room/CracUnitMesh';
 import { exportSceneToGLTF } from '../../utils/exporters/gltfExporter';
 import {
   useConfiguratorStore,
@@ -54,6 +57,7 @@ interface SceneContentsProps {
 export function SceneContents({ orbitRef }: SceneContentsProps) {
   const isBlueprint = useIsBlueprint();
   const viewMode = useConfiguratorStore((s) => s.viewMode);
+  const isRoomViewEnabled = useConfiguratorStore((s) => s.isRoomViewEnabled);
   const racks = useConfiguratorStore(useShallow((s) => s.racks));
   const activeRackId = useConfiguratorStore((s) => s.activeRackId);
   const { camera, scene } = useThree();
@@ -167,8 +171,14 @@ export function SceneContents({ orbitRef }: SceneContentsProps) {
       {/* Ghost preview during drag */}
       <DropIndicator />
 
+      {/* Cold/Hot Aisle Containment & CRAC Cooling Towers */}
+      <AisleContainmentMesh />
+      <CracUnitMesh />
+
       {/* -- Floor chrome ------------------------------------------------ */}
-      {!isBlueprint && (
+      {!isBlueprint && isRoomViewEnabled && <DataHallFloor />}
+
+      {!isBlueprint && !isRoomViewEnabled && (
         <>
           <ContactShadows
             position={[0, -0.001, 0]}
