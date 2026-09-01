@@ -70,3 +70,4 @@ export interface TopologyLink {
   status: 'active' | 'degraded' | 'down';
   color: string;
 }
+

@@ -88,3 +88,4 @@ describe('network.types — Device & Port L2/L3 Configurations', () => {
     expect(devConfig.portsConfig?.['eth0'].adminStatus).toBe('up');
   });
 });
+
