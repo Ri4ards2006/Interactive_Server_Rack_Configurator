@@ -218,3 +218,4 @@ describe('Multi-Rack Undo/Redo Temporal State', () => {
     expect(useConfiguratorStore.getState().racks[1].name).toBe('Rack B');
   });
 });
+
