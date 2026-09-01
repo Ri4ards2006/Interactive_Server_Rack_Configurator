@@ -8,6 +8,7 @@
  */
 
 import type { CableType } from './cable.types';
+import type { DeviceNetworkConfig, PortNetworkConfig } from './network.types';
 
 /** All hardware categories that can be installed into a rack. */
 export type HardwareType =
@@ -34,6 +35,7 @@ export interface PortProps {
   label: string;
   position: Vec3; // relative to device origin [x, y, z]
   cableId: string | null;
+  networkConfig?: PortNetworkConfig;
 }
 
 /**
@@ -53,6 +55,7 @@ export interface HardwareProps {
   rackId?: string; // Parent rack ID if multi-rack
   customModelUrl?: string; // Blob URL or path for custom user-uploaded .glb/.gltf
   modelName?: string;
+  networkConfig?: DeviceNetworkConfig;
 }
 
 export interface CableProps {

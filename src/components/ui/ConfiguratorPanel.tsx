@@ -38,6 +38,7 @@ import {
 import { exportRackElevationSVG } from '../../utils/exporters/elevationExporter';
 import { NetBoxClient } from '../../utils/netbox/netboxClient';
 import type { NetBoxSite, NetBoxRack } from '../../types/netbox.types';
+import type { LinkSpeed, VlanMode, PortAdminStatus } from '../../types/network.types';
 import {
   MOCK_NETBOX_SITES,
   MOCK_NETBOX_RACKS,
@@ -329,10 +330,13 @@ export function ConfiguratorPanel() {
   const addHardware = useConfiguratorStore((s) => s.addHardware);
   const removeHardware = useConfiguratorStore((s) => s.removeHardware);
   const viewMode = useConfiguratorStore((s) => s.viewMode);
+  const setViewMode = useConfiguratorStore((s) => s.setViewMode);
   const toggleViewMode = useConfiguratorStore((s) => s.toggleViewMode);
   const selectedHardwareId = useConfiguratorStore((s) => s.selectedHardwareId);
   const selectHardware = useConfiguratorStore((s) => s.selectHardware);
   const updateHardwarePosition = useConfiguratorStore((s) => s.updateHardwarePosition);
+  const updateDeviceNetworkConfig = useConfiguratorStore((s) => s.updateDeviceNetworkConfig);
+  const updatePortNetworkConfig = useConfiguratorStore((s) => s.updatePortNetworkConfig);
   const rackType = useConfiguratorStore((s) => s.rackType);
   const isDoorOpen = useConfiguratorStore((s) => s.isDoorOpen);
   const setRackType = useConfiguratorStore((s) => s.setRackType);
@@ -372,7 +376,6 @@ export function ConfiguratorPanel() {
   const setFeedFailoverMode = useConfiguratorStore((s) => s.setFeedFailoverMode);
 
   // Thermal Simulation State
-  const setViewMode = useConfiguratorStore((s) => s.setViewMode);
   const ambientTemperatureC = useConfiguratorStore((s) => s.ambientTemperatureC);
   const setAmbientTemperature = useConfiguratorStore((s) => s.setAmbientTemperature);
 
@@ -738,11 +741,11 @@ export function ConfiguratorPanel() {
           <label className="text-[9px] uppercase tracking-wider text-zinc-500">
             [ VIEWPORT_SETTING ]
           </label>
-          <div className="grid grid-cols-3 p-0.5 bg-zinc-950 rounded border border-zinc-800/60">
+          <div className="grid grid-cols-4 p-0.5 bg-zinc-950 rounded border border-zinc-800/60 text-[9px]">
             <button
               type="button"
               onClick={() => setViewMode('3D')}
-              className={`py-1 text-center text-[10px] font-mono rounded transition-all focus:outline-none cursor-pointer ${
+              className={`py-1 text-center font-mono rounded transition-all focus:outline-none cursor-pointer ${
                 viewMode === '3D'
                   ? 'bg-zinc-850 text-zinc-100 border border-zinc-700/50 shadow-sm font-bold'
                   : 'text-zinc-500 hover:text-zinc-300'
@@ -753,24 +756,35 @@ export function ConfiguratorPanel() {
             <button
               type="button"
               onClick={() => setViewMode('blueprint')}
-              className={`py-1 text-center text-[10px] font-mono rounded transition-all focus:outline-none cursor-pointer ${
+              className={`py-1 text-center font-mono rounded transition-all focus:outline-none cursor-pointer ${
                 viewMode === 'blueprint'
                   ? 'bg-cyan-950/40 text-cyan-400 border border-cyan-800/40 shadow-sm font-bold'
                   : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              BLUEPRINT
+              SCHEM
             </button>
             <button
               type="button"
               onClick={() => setViewMode('thermal')}
-              className={`py-1 text-center text-[10px] font-mono rounded transition-all focus:outline-none cursor-pointer ${
+              className={`py-1 text-center font-mono rounded transition-all focus:outline-none cursor-pointer ${
                 viewMode === 'thermal'
-                  ? 'bg-red-950/50 text-red-300 border border-red-800/60 shadow-sm font-bold animate-pulse'
+                  ? 'bg-red-950/50 text-red-300 border border-red-800/60 shadow-sm font-bold'
                   : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              THERMAL
+              HEAT
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('topology')}
+              className={`py-1 text-center font-mono rounded transition-all focus:outline-none cursor-pointer ${
+                viewMode === 'topology'
+                  ? 'bg-emerald-950/50 text-emerald-300 border border-emerald-800/60 shadow-sm font-bold animate-pulse'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              TOPO
             </button>
           </div>
         </div>
@@ -1344,6 +1358,178 @@ export function ConfiguratorPanel() {
                 onChange={(e) => updateHardwareProperty(selectedHardware.id, { depth: parseFloat(e.target.value) })}
                 className="w-full accent-cyan-500 h-1 bg-zinc-900 rounded appearance-none cursor-pointer border border-zinc-800/80"
               />
+            </div>
+
+            {/* L2/L3 Network Configuration Card */}
+            <div className="p-2.5 bg-zinc-900/60 border border-zinc-800 rounded flex flex-col gap-2 text-[9px]">
+              <div className="flex justify-between items-center border-b border-zinc-800/80 pb-1">
+                <span className="font-bold text-cyan-400 uppercase tracking-wider">🌐 L2/L3 NETWORK SPEC</span>
+                <span className="text-[8px] text-zinc-500">IEEE 802.1Q</span>
+              </div>
+
+              {/* Hostname & IP */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="text-zinc-500 block text-[8px]">HOSTNAME:</label>
+                  <input
+                    type="text"
+                    value={selectedHardware.networkConfig?.hostname || ''}
+                    placeholder={`${selectedHardware.type}-${selectedHardware.id.slice(0, 4)}`}
+                    onChange={(e) =>
+                      updateDeviceNetworkConfig(selectedHardware.id, {
+                        hostname: e.target.value,
+                      })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-[9px] text-zinc-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-zinc-500 block text-[8px]">MGMT IP / CIDR:</label>
+                  <input
+                    type="text"
+                    value={selectedHardware.networkConfig?.managementIp || ''}
+                    placeholder="10.0.1.10"
+                    onChange={(e) =>
+                      updateDeviceNetworkConfig(selectedHardware.id, {
+                        managementIp: e.target.value,
+                      })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-[9px] text-zinc-200"
+                  />
+                </div>
+              </div>
+
+              {/* Gateway */}
+              <div>
+                <label className="text-zinc-500 block text-[8px]">DEFAULT GATEWAY:</label>
+                <input
+                  type="text"
+                  value={selectedHardware.networkConfig?.gateway || ''}
+                  placeholder="10.0.1.1"
+                  onChange={(e) =>
+                    updateDeviceNetworkConfig(selectedHardware.id, {
+                      gateway: e.target.value,
+                    })
+                  }
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-[9px] text-zinc-200"
+                />
+              </div>
+
+              {/* Port Interfaces List */}
+              {selectedHardware.ports && selectedHardware.ports.length > 0 && (
+                <div className="flex flex-col gap-1.5 mt-1 border-t border-zinc-800/80 pt-1.5">
+                  <span className="text-[8px] text-zinc-500 font-bold uppercase">
+                    INTERFACES & VLAN TAGGING ({selectedHardware.ports.length} PORTS)
+                  </span>
+                  <div className="max-h-36 overflow-y-auto flex flex-col gap-1.5 custom-scrollbar pr-1">
+                    {selectedHardware.ports.map((port) => {
+                      const portCfg =
+                        selectedHardware.networkConfig?.portsConfig?.[port.id] ||
+                        port.networkConfig ||
+                        {};
+                      const isAdminUp = portCfg.adminStatus !== 'down';
+                      const vlanMode = portCfg.vlanConfig?.mode || 'access';
+                      const accessVlan = portCfg.vlanConfig?.accessVlan || 10;
+                      const speed = portCfg.speed || '10G-SFP+';
+
+                      return (
+                        <div
+                          key={port.id}
+                          className="p-1.5 bg-zinc-950/80 border border-zinc-850 rounded flex flex-col gap-1 text-[8px]"
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-zinc-300">{port.label || port.id}</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updatePortNetworkConfig(selectedHardware.id, port.id, {
+                                  adminStatus: isAdminUp ? 'down' : 'up',
+                                })
+                              }
+                              className={`px-1.5 py-0.5 rounded font-bold uppercase cursor-pointer ${
+                                isAdminUp
+                                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
+                                  : 'bg-red-950 text-red-400 border border-red-800/60'
+                              }`}
+                            >
+                              {isAdminUp ? 'UP' : 'DOWN'}
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-1 mt-0.5">
+                            <div>
+                              <span className="text-zinc-500 block text-[7px]">SPEED:</span>
+                              <select
+                                value={speed}
+                                onChange={(e) =>
+                                  updatePortNetworkConfig(selectedHardware.id, port.id, {
+                                    speed: e.target.value as LinkSpeed,
+                                  })
+                                }
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded px-1 py-0.5 text-[8px] text-zinc-300"
+                              >
+                                <option value="1G-BaseT">1G-BaseT</option>
+                                <option value="10G-SFP+">10G-SFP+</option>
+                                <option value="25G-SFP28">25G-SFP28</option>
+                                <option value="40G-QSFP+">40G-QSFP+</option>
+                                <option value="100G-QSFP28">100G-QSFP28</option>
+                              </select>
+                            </div>
+                            <div>
+                              <span className="text-zinc-500 block text-[7px]">VLAN MODE:</span>
+                              <select
+                                value={vlanMode}
+                                onChange={(e) =>
+                                  updatePortNetworkConfig(selectedHardware.id, port.id, {
+                                    vlanConfig: {
+                                      mode: e.target.value as VlanMode,
+                                      accessVlan,
+                                    },
+                                  })
+                                }
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded px-1 py-0.5 text-[8px] text-zinc-300"
+                              >
+                                <option value="access">Access</option>
+                                <option value="trunk">Trunk</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {vlanMode === 'access' ? (
+                            <div className="flex items-center justify-between mt-0.5">
+                              <span className="text-zinc-500 text-[7.5px]">ACCESS VLAN:</span>
+                              <input
+                                type="number"
+                                min={1}
+                                max={4094}
+                                value={accessVlan}
+                                onChange={(e) =>
+                                  updatePortNetworkConfig(selectedHardware.id, port.id, {
+                                    vlanConfig: {
+                                      mode: 'access',
+                                      accessVlan: parseInt(e.target.value, 10) || 1,
+                                    },
+                                  })
+                                }
+                                className="w-16 bg-zinc-900 border border-zinc-800 rounded px-1 text-[8px] text-zinc-200 text-right"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between mt-0.5">
+                              <span className="text-zinc-500 text-[7.5px]">TAGGED VLANS:</span>
+                              <input
+                                type="text"
+                                defaultValue="10,20,30"
+                                className="w-24 bg-zinc-900 border border-zinc-800 rounded px-1 text-[8px] text-zinc-200 text-right"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="mt-1">

@@ -11,8 +11,8 @@
 2. [State Management & The 60 Hz Split](#2-state-management--the-60-hz-split)
 3. [Mathematical & Geometric Invariants](#3-mathematical--geometric-invariants)
 4. [Dual-Mode Rendering Pipeline (PBR vs. Blueprint)](#4-dual-mode-rendering-pipeline-pbr-vs-blueprint)
-5. [Pointer Event Isolation & HUD Architecture](#5-pointer-event-isolation--hud-architecture)
-6. [Chassis & Hardware Module Registry](#6-chassis--hardware-module-registry)
+5. [Pointer Event Isolation & Interaction Architecture](#5-pointer-event-isolation--interaction-architecture)
+6. [Hardware Component Reference Specifications](#6-hardware-component-reference-specifications)
 
 ---
 
@@ -36,31 +36,28 @@ App.tsx (Root Viewport & Window Event Controller)
 │           ├── Floor & Environment Chrome (3D Mode Only)
 │           │   ├── <ContactShadows opacity={0.55} blur={2.4} />
 │           │   └── <Grid infiniteGrid cellColor="#27272a" />
-│           ├── Multi-Rack Array Subsystem
-│           │   └── racks.map((rack) => group key={rack.id} position={rack.position})
-│           │       ├── RackFrame.tsx (2-Post / 4-Post / Cabinet Enclosure + Glass Door)
-│           │       ├── RackScrews.tsx (InstancedMesh: 2 × Capacity Hex Cap Screws)
-│           │       ├── RackLabels.tsx (Blueprint Only: 84 × Troika SDF <Text> U-Markers)
-│           │       ├── HardwareMapper.tsx (Zustand useShallow Dispatcher)
-│           │       │   ├── Server.tsx (1U / 2U / 4U Server Chassis + Hot-Swap Sleds)
-│           │       │   ├── Switch.tsx (1U 48-Port Switch + Instanced RJ45 & LEDs)
-│           │       │   ├── Router.tsx (1U / 2U Router + Dual PSU & SFP+ Array)
-│           │       │   ├── PatchPanel.tsx (1U 24-Keystone Jack Array)
-│           │       │   ├── Firewall.tsx (1U NGFW + Anodized Bezel & Alarm Cluster)
-│           │       │   ├── JBOD.tsx (4U 36-Bay Storage Array)
-│           │       │   ├── NAS.tsx (2U 12-Bay Storage Array + OLED Display)
-│           │       │   ├── UPS.tsx (2U Battery Backup Unit)
-│           │       │   ├── KVMConsole.tsx (1U Slide-out Drawer + 17″ Tilting LCD)
-│           │       │   ├── BlankingPanel.tsx (1U / 2U Airflow Baffles)
-│           │       │   ├── BrushPanel.tsx (1U Cable Pass-through Bristle Strip)
-│           │       │   ├── CableManager.tsx (2U High-Density Horizontal Ring Duct)
-│           │       │   └── CustomGltfChassis.tsx (Dynamic User-Uploaded 3D Models)
-│           │       └── ThermalHeatmapOverlay.tsx (Volumetric 3D Airflow / Temp Shader)
+│           ├── Rack Structure Subsystem
+│           │   ├── RackFrame.tsx (2-Post / 4-Post / Cabinet Enclosure + Glass Door)
+│           │   ├── RackScrews.tsx (InstancedMesh: 2 × Capacity Hex Cap Screws)
+│           │   └── RackLabels.tsx (Blueprint Only: 84 × Troika SDF <Text> U-Markers)
+│           ├── Hardware Dispatch & Scene Population
+│           │   └── HardwareMapper.tsx (Zustand useShallow Dispatcher)
+│           │       ├── Server.tsx (1U / 2U / 4U Server Chassis + Hot-Swap Sleds)
+│           │       ├── Switch.tsx (1U 48-Port Switch + Instanced RJ45 & LEDs)
+│           │       ├── Router.tsx (1U / 2U Router + Dual PSU & SFP+ Array)
+│           │       ├── PatchPanel.tsx (1U 24-Keystone Jack Array)
+│           │       ├── Firewall.tsx (1U NGFW + Anodized Bezel & Alarm Cluster)
+│           │       ├── JBOD.tsx (4U 36-Bay Storage Array)
+│           │       ├── NAS.tsx (2U 12-Bay Storage Array + OLED Display)
+│           │       ├── UPS.tsx (2U Battery Backup Unit)
+│           │       ├── KVMConsole.tsx (1U Slide-out Drawer + 17″ Tilting LCD)
+│           │       ├── BlankingPanel.tsx (1U / 2U Airflow Baffles)
+│           │       ├── BrushPanel.tsx (1U Cable Pass-through Bristle Strip)
+│           │       └── CableManager.tsx (2U High-Density Horizontal Ring Duct)
 │           ├── Cable Routing Subsystem
-│           │   └── CableLayer.tsx (Cross-Rack Physical Connectivity)
-│           │       ├── CableMesh[] (CatmullRom 3D Splines + Bending Curvature Shaders)
-│           │       ├── ConnectorPlugs[] (Molded RJ45 / LC Duplex Boots)
-│           │       ├── DraggingCableMesh (Real-time In-Flight CatmullRom Curve)
+│           │   └── CableMapper (src/components/canvas/Hardware/PatchCable.tsx)
+│           │       ├── PatchCable[] (CatmullRom 3D Splines + RJ45 Plugs + Delete HTML HUD)
+│           │       ├── DraggingCable (Real-time in-flight CatmullRom Curve)
 │           │       └── DragCatcher Plane (5.0 m × 5.0 m Invisible Pointer Interceptor)
 │           ├── Ghost Preview & Snapping HUD
 │           │   └── DropIndicator.tsx (Zustand useDragStore Ghost Mesh)
@@ -70,28 +67,26 @@ App.tsx (Root Viewport & Window Event Controller)
     └── ConfiguratorPanel.tsx (HUD Overlay System)
         ├── Zen Mode Toggle (Top-Center HUD Action)
         ├── Left Sidebar: Control Console
-        │   ├── Telemetry Header (Status, Loc-ID, Multi-Rack Selector)
+        │   ├── Telemetry Header (Status, Loc-ID)
         │   ├── Terminal Search Input (`> SEARCH_HARDWARE...`)
         │   ├── Viewport Mode Switch (`3D RENDER` vs. `BLUEPRINT`)
         │   ├── Rack Form Factor Selector (`2-POST` / `4-POST` / `CABINET`)
-        │   ├── Cabinet Door Toggle (`[ OPEN DOOR ]` / `[ CLOSE DOOR ]`)
-        │   ├── Power & Phase Gauges (L1/L2/L3 Balance, 80% NEC Rule Limit)
-        │   ├── Thermal Telemetry (CFM Differential, Intake/Exhaust Delta-T)
+        │   ├── Cabinet Door Toggle Button (`[ OPEN DOOR ]` / `[ CLOSE DOOR ]`)
+        │   ├── Power & Capacity Gauges (`TOTAL_DRAW`, `CAPACITY_USE`, `NODE_COUNT`)
         │   └── Categorized Hardware Injection Catalog (5 Sub-groups)
         └── Right Sidebar: Asset Inventory & Diagnostics
             ├── Installed Unit Counter & List
             ├── Re-order / Vertical Shifter Controls (`canShiftUp` / `canShiftDown`)
             ├── Live Property Inspectors (`PWR_TARGET`, `DEPTH_SPEC` range sliders)
-            ├── Export Actions (BOM CSV/JSON, GLTF 3D Scene, Vector SVG Elevation)
             └── Asset Decommission / Deselect Triggers
 ```
 
-### 1.2 Structural Pipeline & Synchronization Flow
+### 1.2 Structural Topography & Data Flow Diagram
 
 ```
  +---------------------------------------------------------------------------------------+
  |                                  BROWSER WINDOW (App.tsx)                             |
- |  Global Listeners: [Escape] -> selectHardware(null), [Ctrl+Z] -> undo(), [Ctrl+Y] -> redo()
+ |  Global Listeners: [Escape] -> selectHardware(null)                                   |
  +-------------------------------------------+-------------------------------------------+
                                              |
                      +-----------------------+-----------------------+
@@ -102,25 +97,36 @@ App.tsx (Root Viewport & Window Event Controller)
  |         (ConfiguratorPanel)           |       |                (Scene)                |
  |                                       |       |                                       |
  |  pointer-events-none (container)      |       |  R3F Canvas, Camera, OrbitControls    |
- |  pointer-events-auto (active controls)|       |  Raycaster / Pointer Event Target     |
+ |  pointer-events-auto (active buttons) |       |  Raycaster / Pointer Event Target     |
+ |                                       |       |                                       |
+ |  * Catalog Hardware Injectors         |       |  * Rack Frame Geometry & Screws       |
+ |  * Telemetry Gauges (Watts, U-Space)  |       |  * 12 Distinct Chassis Meshes         |
+ |  * Diagnostic Sliders (Depth, Power)  |       |  * 3D Bezier Patch Cables             |
+ |  * Rack & Viewport Mode Selectors     |       |  * Transient Snapping Drop Ghost      |
  +-------------------+-------------------+       +-------------------+-------------------+
                      |                                               |
-                     |  Dispatches Inventory & Layout Actions        |  Reads Snapping & Drag State
+                     | Subscribes via Selectors                      | Reads State & Dispatches
+                     | Mutates via Actions                           | Captures Pointer Events
                      v                                               v
  +---------------------------------------------------------------------------------------+
- |                               ZUSTAND GLOBAL STORES                                   |
+ |                                 ZUSTAND STORE LAYER                                   |
  |                                                                                       |
- |  useConfiguratorStore (Persistent Domain State)                                       |
- |  - Multi-rack array: `racks: RackInstance[]`, `activeRackId: string`                 |
- |  - Inventory: `installedHardware: HardwareProps[]`                                    |
- |  - Physical Connectivity: `cables: CableProps[]`                                      |
- |  - Electrical & Thermal: `voltage`, `breakerRating`, `ambientTempC`                   |
- |  - Selection: `selectedHardwareId`, `selectedCableId`                                 |
- |  - Temporal Ring Buffer: `undo()`, `redo()`, `history`                                |
- |                                                                                       |
- |  useDragStore (Transient 60 Hz Pointer Coordination)                                  |
- |  - Frame-rate math: `isDragging: boolean`, `dropPosition: Vec3 | null`                 |
- |  - Snapping feedback: `isValid: boolean`, `rackUnits: number`, `depth: number`        |
+ |  +-------------------------------------+     +-------------------------------------+  |
+ |  |    useConfiguratorStore (Persistent)|     |      useDragStore (Transient)       |  |
+ |  |                                     |     |                                     |  |
+ |  |  * capacity: 42                     |     |  * isDragging: boolean              |  |
+ |  |  * installedHardware: HardwareProps[]     |  * draggingId: string | null        |  |
+ |  |  * cables: CableProps[]             |     |  * dropPosition: Vec3 | null        |  |
+ |  |  * selectedHardwareId: string | null|     |  * rackUnits: number                |  |
+ |  |  * selectedCableId: string | null   |     |  * depth: number                    |  |
+ |  |  * viewMode: '3D' | 'blueprint'     |     |  * isValid: boolean                 |  |
+ |  |  * rackType: '2-post'|'4-post'|'cab'|     |                                     |  |
+ |  |  * isDoorOpen: boolean              |     |  Cadence: ~60 Hz (drag frames only) |  |
+ |  |  * hddBays: Record<devId, BayState> |     |  Subscribers: Only DropIndicator    |  |
+ |  |                                     |     +-------------------------------------+  |
+ |  |  Cadence: Low (On user commit only) |                                              |
+ |  |  Subscribers: HUD, Mapper, Frame    |                                              |
+ |  +-------------------------------------+                                              |
  +---------------------------------------------------------------------------------------+
 ```
 
@@ -128,72 +134,52 @@ App.tsx (Root Viewport & Window Event Controller)
 
 ## 2. State Management & The 60 Hz Split
 
-A primary performance bottleneck in 3D web configurators is React state thrashing during high-frequency pointer interactions. When a user drags a 4U server across a 42U rack, the pointer emits up to 120 `pointermove` events per second. Updating persistent component state at this frequency causes full-tree re-renders, stalling the JavaScript main thread and triggering visible frame drops.
+### 2.1 The Render Bottleneck Problem
 
-### 2.1 The Two-Store Architecture
+In a Three.js / React-Three-Fiber scene graph containing hundreds of sub-meshes, instanced geometries, lights, and materials, firing high-frequency store mutations (~60 frames per second during mouse move) into a unified root store triggers massive performance degradation:
 
-To achieve a locked 60 Hz (or 120 Hz on ProMotion displays) interaction loop, state is strictly split across two independent stores:
+1. **Selector Invalidation:** Any component using shallow comparison or non-primitive selectors re-evaluates on every store write.
+2. **Reconciliation Cost:** React attempts to reconcile the virtual DOM tree across all 11+ installed chassis components.
+3. **GPU Matrix Recalculations:** Three.js updates the world transformation matrices (`updateMatrixWorld()`) across nested `<group>` and `<mesh>` nodes unnecessarily.
 
-```
-                          USER DRAGS HARDWARE IN 3D
-                                     │
-                     ┌───────────────┴───────────────┐
-                     │                               │
-        POINTERMOVE (60-120 Hz)              POINTERUP (Atomic)
-                     │                               │
-                     ▼                               ▼
-       ┌───────────────────────────┐   ┌───────────────────────────┐
-       │       useDragStore        │   │   useConfiguratorStore    │
-       │     (Transient State)     │   │    (Persistent State)     │
-       ├───────────────────────────┤   ├───────────────────────────┤
-       │ • isDragging: true        │   │ • updateHardwarePosition  │
-       │ • dropPosition: [0, y, 0] │   │ • recordHistorySnapshot   │
-       │ • isValid: boolean        │   │ • recomputeTelemetry      │
-       └─────────────┬─────────────┘   └─────────────┬─────────────┘
-                     │                               │
-                     ▼                               ▼
-          Only <DropIndicator />           Full Component Tree
-          re-renders at 60 Hz              re-renders ONCE on commit
-```
+### 2.2 The Dual-Store Boundary
 
-### 2.2 Store Responsibilities & Interfaces
-
-#### 1. Persistent Domain Store: `useConfiguratorStore`
-* **Persistence Boundary:** Contains all data that must be serialized, exported to BOM, synchronized with NetBox DCIM, or tracked in the undo/redo history.
-* **Component Subscription Pattern:** Subscribed components must use shallow equality selectors (`useShallow`) to prevent re-rendering when unrelated properties mutate.
+To guarantee smooth, uninterrupted 60 Hz dragging, state is partitioned into two orthogonal stores:
 
 ```ts
-export interface ConfiguratorState {
-  racks: RackInstance[];
-  activeRackId: string;
+// src/types/rack.types.ts
+export interface RackState {
   capacity: number;
-  rackType: RackFrameType;
-  isDoorOpen: boolean;
   installedHardware: HardwareProps[];
   cables: CableProps[];
+}
+
+// src/store/useConfiguratorStore.ts
+export interface ConfiguratorState extends RackState {
   selectedHardwareId: string | null;
   selectedCableId: string | null;
   viewMode: '3D' | 'blueprint';
-  voltage: VoltageStandard;
-  breakerRating: BreakerRating;
-  ambientTempC: number;
+  activeDraggingCable: DraggingCableProps | null;
+  hddBays: Record<string, Record<number, HddBayState>>;
+  rackType: '2-post' | '4-post' | 'cabinet';
+  isDoorOpen: boolean;
   
-  // Actions
-  addHardware: (type: HardwareType, rackUnits: number, depth?: number) => void;
+  // Mutators (Commit-level operations)
+  addHardware: (type: HardwareType, rackUnits: number) => void;
   removeHardware: (id: string) => void;
   updateHardwarePosition: (id: string, position: Vec3) => void;
-  addCable: (cable: Omit<CableProps, 'id'>) => void;
+  selectHardware: (id: string | null) => void;
+  toggleViewMode: () => void;
+  setRackType: (type: '2-post' | '4-post' | 'cabinet') => void;
+  setDoorOpen: (isOpen: boolean) => void;
+  addCable: (fromDev: string, fromPort: string, toDev: string, toPort: string, color: string) => void;
   removeCable: (id: string) => void;
-  undo: () => void;
-  redo: () => void;
+  unpatchPort: (deviceId: string, portId: string) => void;
+  toggleHddBay: (deviceId: string, bayIndex: number) => void;
+  simulateHddFailure: () => void;
 }
-```
 
-#### 2. Transient Coordination Store: `useDragStore`
-* **High-Frequency Boundary:** Holds the instantaneous 3D intersection coordinates, computed snap grid ticks, and real-time bounding box collision flags.
-* **Zero Component Re-renders:** Only the lightweight `<DropIndicator />` ghost mesh subscribes to this store. The chassis being dragged remains static in persistent state until `pointerup` fires.
-
-```ts
+// src/store/useDragStore.ts
 export interface DragSnapshot {
   isDragging: boolean;
   draggingId: string | null;
@@ -210,262 +196,345 @@ export interface DragActions {
 }
 ```
 
+### 2.3 Store Interaction Lifecycle
+
+During a hardware drag interaction, event processing delegates to `src/hooks/interactionHandlers.ts`:
+
+```
+[ User Presses Pointer on Chassis ]
+  │
+  ├── 1. e.stopPropagation()
+  ├── 2. asElement(e.target)?.setPointerCapture(e.pointerId)
+  ├── 3. ctx.selectHardware(hardware.id)                    --> Updates useConfiguratorStore (once)
+  ├── 4. ctx.beginDrag({ id, rackUnits, depth })           --> Initializes useDragStore (once)
+  └── 5. ctx.setIsDragging(true)                           --> Local component React state
+  
+[ User Moves Pointer (60 Hz Event Stream) ]
+  │
+  ├── 1. e.stopPropagation()
+  ├── 2. snappedY = snapToU(e.point.y, rackUnits)           --> Pure mathematical projection
+  ├── 3. isValid = checkDropValidity(id, snappedY, ...)     --> Fast geometric collision test
+  ├── 4. ctx.updateDropPosition([x, snappedY, z], isValid) --> Mutates useDragStore ONLY (~60 Hz)
+  │      └── Only <DropIndicator /> re-renders (recolors green/red ghost)
+  └── 5. ctx.updateHardwarePosition(id, [x, snappedY, z])   --> Direct positional tracking
+
+[ User Releases Pointer / Pointer Cancel / Blur ]
+  │
+  ├── 1. e.stopPropagation()
+  ├── 2. asElement(e.target)?.releasePointerCapture(pointerId)
+  ├── 3. ctx.setIsDragging(false)                          --> Local component React state
+  ├── 4. ctx.endDrag()                                     --> Clears useDragStore (unmounts ghost)
+  └── 5. Position already committed in persistent store
+```
+
 ---
 
 ## 3. Mathematical & Geometric Invariants
 
-All spatial math across 3D meshes, collision detectors, snap helpers, and SVG elevation exporters references a single immutable source of truth: **EIA-310-D Standard Dimensions**.
+### 3.1 Standard Physical Constants
 
-### 3.1 Fundamental Metric Constants
+All spatial measurements in the configurator are modeled in standard metric units (meters) derived directly from the **EIA-310-D** international standard:
 
-$$\text{1 Rack Unit (1U)} = 1.750\text{ inches} = 44.450\text{ mm} = 0.04445\text{ m}$$
-$$\text{Standard 19″ Horizontal Chassis Width} = 17.323\text{ inches} = 440.0\text{ mm} = 0.440\text{ m}$$
-$$\text{Outer Mounting Hole Pitch} = 18.312\text{ inches} = 465.12\text{ mm} = 0.46512\text{ m}$$
-$$\text{Multi-Rack Baying Pitch} = 800.0\text{ mm} = 0.800\text{ m}$$
+| Constant | Value (SI) | Value (Imperial) | Description | Location |
+|---|---|---|---|---|
+| `RACK_UNIT_HEIGHT` ($U$) | `0.04445 m` | $1.750\text{ in}$ ($44.45\text{ mm}$) | Vertical pitch per standard Rack Unit | `src/store/useConfiguratorStore.ts:42` |
+| `CHASSIS_WIDTH` | `0.44000 m` | $17.323\text{ in}$ ($440\text{ mm}$) | Outer width of a 19″ mountable chassis body | `src/store/useConfiguratorStore.ts:57` |
+| `EDGE_GAP` | `0.00500 m` | $0.197\text{ in}$ ($5.0\text{ mm}$) | Vertical visual clearance seam between units | `src/store/useConfiguratorStore.ts:58` |
+| `MOUNT_WIDTH` | `0.48200 m` | $18.976\text{ in}$ ($482\text{ mm}$) | 19-inch mounting post center-to-center pitch | `src/components/canvas/Rack/RackFrame.tsx:31` |
+| `MOUNT_DEPTH` | `0.78000 m` | $30.709\text{ in}$ ($780\text{ mm}$) | Mounting rail depth (spans $z = -0.39$ to $+0.39$) | `src/components/canvas/Rack/RackFrame.tsx:32` |
+| `CABINET_WIDTH` | `0.60000 m` | $23.622\text{ in}$ ($600\text{ mm}$) | Outer width of enclosed cabinet frame | `src/components/canvas/Rack/RackFrame.tsx:25` |
+| `CABINET_DEPTH` | `1.00000 m` | $39.370\text{ in}$ ($1000\text{ mm}$) | Outer depth of enclosed cabinet frame | `src/components/canvas/Rack/RackFrame.tsx:26` |
+| `COLLISION_EPSILON` ($\varepsilon$) | `0.00100 m` | $0.039\text{ in}$ ($1.0\text{ mm}$) | Float tolerance for Y-range boundary checks | `src/utils/rackLayout.ts:38` |
+
+### 3.2 Coordinate Spaces & Vertical Center Anchoring
+
+The configurator utilizes a **floor-zero rack-local coordinate frame**:
+
+$$\text{Rack Floor Plane: } y = 0 \quad \longleftrightarrow \quad \text{Rack Top Plane: } y = \text{capacity} \cdot U$$
+
+```
+   y = 42 * U  +------------------------------------+  (Rack Ceiling: y = 1.8669 m)
+               | [U42]                              |
+               |                                    |
+               |                                    |
+               | [U2]                               |
+               | [U1]                               |
+   y = 0       +====================================+  (Rack Floor: y = 0.0000 m)
+                 x = -0.241 m        x = +0.241 m
+```
+
+* **Chassis Positioning Rule:** A chassis position is defined by its geometric **vertical center**, NOT its bottom edge:
+  $$\text{Chassis Extent: } \left[ y_{\text{center}} - \frac{\text{rackUnits} \cdot U}{2}, \; y_{\text{center}} + \frac{\text{rackUnits} \cdot U}{2} \right]$$
+* **Rendered Mesh Height:** To preserve visual panel gaps matching real rack installations:
+  $$h_{\text{mesh}} = (\text{rackUnits} \cdot U) - \text{EDGE\_GAP}$$
+
+### 3.3 Parity-Aware Snapping (`snapToU`)
+
+Chassis mounting holes conform to two distinct physical symmetries depending on height parity:
+1. **Odd Rack Units ($1U, 3U, 5U \dots$):** Geometric center must land on a **slot center** ($y = n \cdot U + \frac{U}{2}$).
+2. **Even Rack Units ($2U, 4U, 6U \dots$):** Geometric center must land on a **slot seam** ($y = n \cdot U$).
 
 ```ts
-export const RACK_UNIT_HEIGHT = 0.04445; // meters (1U)
-export const CHASSIS_WIDTH = 0.44;       // meters (440 mm inner clearance)
-export const BAY_SPACING = 0.8;          // meters (800 mm center-to-center)
-export const EDGE_GAP = 0.005;           // meters (5 mm aesthetic clearance)
-export const COLLISION_EPSILON = 0.001;  // meters (1 mm numerical tolerance)
-```
-
-### 3.2 Rack-Local Coordinate Frame
-
-* **Origin $(0, 0, 0)$:** Floor level ($y = 0$), centered horizontally ($x = 0$) along the front mounting rail face ($z = 0$).
-* **Positive $Y$ Axis:** Extends vertically toward the rack roof ($y = \text{capacity} \times \text{RACK\_UNIT\_HEIGHT}$).
-* **Positive $Z$ Axis:** Extends forward toward the cold aisle. Chassis insertion projects along negative $Z$ into the cabinet depth.
-* **Positive $X$ Axis:** Extends to the right rail face. Multi-rack baying positions adjacent racks at $x_k = k \times \text{BAY\_SPACING}$.
-
-```
-                   +Y (Vertical Top: capacity * 0.04445m)
-                    ^
-                    |
-                    |       +----+ (Chassis Face: Width = 0.44m)
-                    |      /    /|
-                    |     +----+ |
-                    |     |    | +
-                    |     +----+/  Depth (0.6m - 0.8m)
-                    |
-                    +---------------------> +X (Right Rail)
-                   / (Floor Zero: y = 0)
-                  /
-                 v
-               +Z (Front Aisle / Door)
-```
-
-### 3.3 Parity-Aware Vertical Snapping (`snapToU`)
-
-Chassis models anchor their geometric origin at their **volumetric center**. Because height varies with $U$-count, odd-height chassis ($1\text{U}, 3\text{U}, 5\text{U}$) and even-height chassis ($2\text{U}, 4\text{U}, 6\text{U}$) align differently relative to integer $U$ grid lines:
-
-1. **Odd $U$ Parity ($1\text{U}, 3\text{U}, \dots$):** The center must sit on a **slot midpoint** ($y = k \cdot U + \frac{U}{2}$).
-2. **Even $U$ Parity ($2\text{U}, 4\text{U}, \dots$):** The center must sit on a **slot boundary seam** ($y = k \cdot U$).
-
-```
- [2U Chassis] Center @ y = 1.0 * U (Seam)     [1U Chassis] Center @ y = 0.5 * U (Midpoint)
- +-------------------------------------+       +-------------------------------------+ U2 (0.0889m)
- |                  ^                  |       |                                     |
- |                  | 0.5U             |       + - - - - - - - - - - - - - - - - - - + Midpoint (0.0666m)
- |                  v                  |       |                  ^                  |
- +==================X==================+ U1    +==================X==================+ U1 (0.0444m)
- |                  ^                  |       |                  | 0.5U             |
- |                  | 0.5U             |       |                  v                  |
- |                  v                  |       + - - - - - - - - - - - - - - - - - - + Midpoint (0.0222m)
- +-------------------------------------+ U0    +-------------------------------------+ U0 (0.0000m)
-```
-
-#### Mathematical Formulation
-
-For a raw raycast intersection $y \in \mathbb{R}$ and chassis height $h_U \in \mathbb{N}^+$:
-
-$$\operatorname{snapToU}(y, h_U) = \begin{cases} 
-\operatorname{round}\left(\frac{y - U/2}{U}\right) \cdot U + \frac{U}{2}, & \text{if } h_U \equiv 1 \pmod 2 \\ 
-\operatorname{round}\left(\frac{y}{U}\right) \cdot U, & \text{if } h_U \equiv 0 \pmod 2 
-\end{cases}$$
-
-```ts
+// src/hooks/snapToU.ts
 export function snapToU(y: number, rackUnits: number): number {
   const u = RACK_UNIT_HEIGHT;
   const halfU = u / 2;
+  
   if (rackUnits % 2 === 1) {
+    // Odd parity: Center sits at slot centers (0.5U, 1.5U, 2.5U...).
+    // Shift y by -halfU so Math.round references integer slot index n
+    // rather than the slot seam.
     const slotIndex = Math.round((y - halfU) / u);
     return slotIndex * u + halfU;
   }
+  
+  // Even parity: Center sits on slot seams (0, U, 2U...).
   return Math.round(y / u) * u;
 }
 ```
 
-### 3.4 Floating-Point Range Collision Validation
+#### Mathematical Proof of the $- \frac{U}{2}$ Shift
 
-The system evaluates collision validity by calculating the 1D closed interval $[y_{\min}, y_{\max}]$ occupied by each chassis along the vertical rail.
+In standard JavaScript / IEEE 754 arithmetic, `Math.round(0.5) === 1` (half rounds toward $+\infty$).
 
-#### Footprint Definition
+Without the shift for a $1U$ device at the bottom slot ($y = 0.5U$):
+$$\text{Calculated} = \text{Math.round}\left(\frac{0.5U}{U}\right) \cdot U + 0.5U = \text{Math.round}(0.5) \cdot U + 0.5U = 1 \cdot U + 0.5U = 1.5U \quad (\text{Off by }+1U!)$$
 
-$$\mathcal{F}(y_c, h_U) = \left[ y_c - \frac{h_U \cdot U}{2}, \; y_c + \frac{h_U \cdot U}{2} \right]$$
+With the shift applied:
+$$\text{slotIndex} = \text{Math.round}\left(\frac{0.5U - 0.5U}{U}\right) = \text{Math.round}(0) = 0$$
+$$\text{Position} = 0 \cdot U + 0.5U = 0.5U \quad (\text{Correctly matches Slot 0})$$
 
-#### Overlap Invariant with Epsilon Tolerance
+### 3.4 Floating-Point Collision & Boundary Validation
 
-Let $\mathcal{F}_{\text{drop}} = [a_{\min}, a_{\max}]$ be the candidate drop footprint, and $\mathcal{F}_i = [b_{\min, i}, b_{\max, i}]$ be the footprint of an installed chassis $i$.
+To avoid fragile integer slot mapping arrays (which fail when handling arbitrary U-heights and half-step offsets), collision detection is performed continuously via floating-point interval overlap calculus with tolerance buffer $\varepsilon$:
 
-A collision occurs if and only if:
+$$\text{Footprint Function: } \mathcal{F}(y, k) = \left[ y - \frac{k \cdot U}{2}, \; y + \frac{k \cdot U}{2} \right] \equiv [y_{\min}, y_{\max}]$$
 
-$$\operatorname{Overlap}(\mathcal{F}_{\text{drop}}, \mathcal{F}_i) \iff \left( a_{\max} > b_{\min, i} + \varepsilon \right) \;\land\; \left( a_{\min} < b_{\max, i} - \varepsilon \right)$$
+```ts
+// src/utils/rackLayout.ts
+export function checkDropValidity(
+  draggingId: string,
+  snappedY: number,
+  rackUnits: number,
+  capacity: number,
+  hardwareList: HardwareProps[],
+): boolean {
+  if (!Number.isFinite(snappedY) || !Number.isFinite(rackUnits) || !Number.isFinite(capacity)) {
+    return false;
+  }
 
-where $\varepsilon = \text{COLLISION\_EPSILON} = 0.001\text{ m}$ ($1.0\text{ mm}$).
+  const drop = getChassisFootprint(snappedY, rackUnits);
 
+  // 1. Boundary Check with Epsilon Buffer
+  if (
+    drop.min < -COLLISION_EPSILON ||
+    drop.max > capacity * RACK_UNIT_HEIGHT + COLLISION_EPSILON
+  ) {
+    return false;
+  }
+
+  // 2. Pairwise Overlap Check against all other installed chassis
+  for (const h of hardwareList) {
+    if (h.id === draggingId) continue;
+
+    const other = getChassisFootprint(h.position[1], h.rackUnits);
+
+    // Two intervals [minA, maxA] and [minB, maxB] overlap iff:
+    // maxA > minB + EPSILON && minA < maxB - EPSILON
+    if (
+      drop.max > other.min + COLLISION_EPSILON &&
+      drop.min < other.max - COLLISION_EPSILON
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
 ```
- Case 1: Overlap Detected (Collision -> Invalid)
- Candidate:   [========== a_min ... a_max ==========]
- Installed:              [========== b_min ... b_max ==========]
- Condition:   (a_max > b_min + ε) AND (a_min < b_max - ε) === TRUE -> REJECT
 
- Case 2: Flush Seam Stacking (Allowed -> Valid)
- Candidate:   [========== a_min ... a_max ==========]
- Installed:                                         [========== b_min ... b_max ==========]
- Boundary:                                         a_max == b_min
- Condition:   (a_max > b_min + ε) === FALSE -> ACCEPT
-```
-
-The $\varepsilon$ buffer absorbs IEEE-754 floating-point inaccuracies and allows flush seam stacking (where $a_{\max} = b_{\min}$) without false-positive collision rejections.
+* **Role of $\varepsilon = 0.001\text{ m}$ (1 mm):**
+  1. Absorbs cumulative IEEE 754 precision drift ($10^{-16}\text{ m}$).
+  2. Allows flush edge-touching mounts: when $drop.min = other.max$, $drop.min < other.max - \varepsilon$ evaluates to `false`, correctly allowing adjacent stacking.
+  3. Rejects genuine overlaps: any overlap $\ge 1\text{ mm}$ is caught and invalidated.
 
 ---
 
-## 4. Dual-Mode Rendering Pipeline
+## 4. Dual-Mode Rendering Pipeline (PBR vs. Blueprint)
 
-The configurator incorporates two distinct rendering paths optimized for different use cases: photoreal visual inspection (`3D`) and technical CAD drafting (`blueprint`).
+The configurator features an instant, zero-allocation visual switch between high-fidelity photorealistic rendering and technical CAD blueprint visualization.
 
 ```
-                    ┌───────────────────────────────┐
-                    │      useConfiguratorStore     │
-                    │      viewMode === '...'       │
-                    └───────────────┬───────────────┘
-                                    │
-            ┌───────────────────────┴───────────────────────┐
-            │                                               │
-            ▼ '3D'                                          ▼ 'blueprint'
- ┌─────────────────────────────────────┐   ┌─────────────────────────────────────┐
- │         PHOTOREAL PBR STAGE         │   │         CAD BLUEPRINT STAGE         │
- ├─────────────────────────────────────┤   ├─────────────────────────────────────┤
- │ • MeshStandardMaterial              │   │ • MeshBasicMaterial (Flat Colors)   │
- │   - Roughness: 0.2 - 0.7            │   │   - Background: #0a0a0a             │
- │   - Metalness: 0.1 - 0.85           │   │   - Chassis Body: #09090b           │
- │ • HDR Environment (Warehouse)       │   │   - Bezel Accents: #0c4a6e          │
- │ • DirectionalLight + AmbientLight   │   │ • Memoized EdgesGeometry (Cyan-400) │
- │ • Dynamic Contact Shadows           │   │ • Unmounted Lights, HDR & Shadows   │
- │ • Free Orbital Camera               │   │ • Locked Orthogonal Front Camera    │
- │ • Perspective Projection            │   │ • 84x SDF U-Height Text Labels      │
- └─────────────────────────────────────┘   └─────────────────────────────────────┘
+                  +----------------------------------------------+
+                  |           ConfiguratorState.viewMode         |
+                  +----------------------+-----------------------+
+                                         |
+                     +-------------------+-------------------+
+                     | '3D'                                  | 'blueprint'
+                     v                                       v
+      +-----------------------------+         +-----------------------------+
+      |      PBR REALISTIC MODE     |         |     CAD BLUEPRINT MODE      |
+      +-----------------------------+         +-----------------------------+
+      | Materials:                  |         | Materials:                  |
+      | * MeshStandardMaterial      |         | * MeshBasicMaterial (Flat)  |
+      | * Metalness 0.5 - 0.95      |         | * Chassis: #151515          |
+      | * Roughness 0.1 - 0.7       |         | * Bezel:   #050505          |
+      | * Accent Emissives          |         | * Accent:  #22d3ee (Cyan)   |
+      |                             |         |                             |
+      | Overlays:                   |         | Overlays:                   |
+      | * ContactShadows            |         | * EdgesGeometry Outlines    |
+      | * Infinite Floor Grid       |         | * LineBasicMaterial (#67e8f9|
+      |                             |         | * RackLabels (84 SDF Text)  |
+      | Environment:                |         |                             |
+      | * Directional Shadow Map    |         | Environment:                |
+      | * Warehouse HDR Map         |         | * Lights UNMOUNTED          |
+      |                             |         | * Shadows UNMOUNTED         |
+      | Camera:                     |         |                             |
+      | * Perspective [1.5, 1.2, 1.5] |         | Camera:                     |
+      | * 3-Axis Orbit Controls     |         | * Orthogonal Snap [0, mid, Z|
+      +-----------------------------+         | * Rotation LOCKED (Pan/Zoom)|
+                                              +-----------------------------+
 ```
 
-### 4.1 Photoreal PBR Mode Pipeline (`3D`)
-1. **Lighting & Environment:** Uses `<Environment preset="warehouse" />` combined with a key `<directionalLight castShadow position={[5, 8, 4]} intensity={1.6} />` and fill `<ambientLight intensity={0.35} />`.
-2. **Floor Chrome:** Renders `<ContactShadows opacity={0.55} scale={10} blur={2.4} far={4} />` beneath the rack chassis, grounding the assembly on a dark infinite procedural grid (`#27272a`).
-3. **Camera Rig:** Perspective camera with free orbit, smooth damping (`dampingFactor={0.08}`), and constrained polar angles preventing camera descent beneath floor level.
+### 4.1 Subsystem Differences Matrix
 
-### 4.2 CAD Blueprint Mode Pipeline (`blueprint`)
-1. **Lighting & Environment Bypass:** Ambient lights, directional lights, HDR environments, and contact shadows are completely unmounted from the scene graph, preventing GPU compute overhead for lighting passes.
-2. **Flat Unlit Shading:** All chassis components switch references to static `MeshBasicMaterial` instances (`#09090b` chassis bodies, `#0c4a6e` anodized bezels, `#0284c7` structural flanges).
-3. **Memoized Wireframe Overlays (`SchematicBox`):** Edge lines are extracted via `THREE.EdgesGeometry` with an angle threshold of $25^\circ$, rendering sharp cyan outlines (`#22d3ee` at $85\%$ opacity) along structural chassis seams:
+| Pipeline Feature | 3D Photorealistic Mode | 2D CAD Blueprint Mode | Technical Implementation |
+|---|---|---|---|
+| **Chassis Surface** | `MeshStandardMaterial` (anodized steel, brushed alu) | `MeshBasicMaterial` (`#151515` flat fill) | Module-scoped singleton material swap |
+| **Edge Geometry** | None (shaded PBR edges) | Cyan `EdgesGeometry` (`LineSegments`, `#67e8f9`) | `<SchematicBox />` memoized on `[w,h,d]` |
+| **Lighting & HDR** | Directional Light (2048² shadow map) + Warehouse HDR | Completely unmounted (`!isBlueprint && ...`) | Zero light evaluation overhead |
+| **Floor & Shadows** | Soft `ContactShadows` + Procedural `<Grid>` | Completely unmounted | Eliminates shadow map pass |
+| **Rail Annotations** | Hidden (`null`) | 84 × Troika SDF `<Text>` instances (U1..U42) | `<RackLabels />` with black high-contrast halo |
+| **Camera Pose** | Perspective `[1.5, 1.2, 1.5]`, target `[0, 0.8, 0]` | Perpendicular `[0, midY, 2.2]`, target `[0, midY, 0]` | Imperative camera lerp/snap in `SceneContents` |
+| **OrbitControls** | Full Orbit Rotation + Pan + Zoom | `enableRotate = false` (Locked Pan + Zoom) | `controls.enableRotate = false` |
+| **Cabinet Door** | Smooth exponential lerp open/close | Hidden / Suppressed | Conditional branch on `!isBlueprint` |
 
-```tsx
-export function SchematicBox({ width, height, depth, position }: SchematicBoxProps) {
-  const edgeGeo = useMemo(() => {
-    const box = new THREE.BoxGeometry(width, height, depth);
-    const edges = new THREE.EdgesGeometry(box, 25);
-    box.dispose();
-    return edges;
-  }, [width, height, depth]);
+### 4.2 Module-Scoped Material Re-use (Zero GC Overhead)
 
+To eliminate garbage collection pauses and GPU texture re-uploads when flipping modes, all materials are instantiated once at module scope:
+
+```ts
+// src/components/canvas/Hardware/shared.tsx
+export const blueprintChassisMaterial = new THREE.MeshBasicMaterial({ color: '#151515' });
+export const blueprintFrameFillMaterial = new THREE.MeshBasicMaterial({ color: '#151515' });
+export const blueprintBezelMaterial = new THREE.MeshBasicMaterial({ color: '#050505' });
+export const blueprintAccentMaterial = new THREE.MeshBasicMaterial({ color: '#22d3ee' });
+export const blueprintEdgeMaterial = new THREE.LineBasicMaterial({ color: '#67e8f9' });
+
+export function SchematicBox({ width, height, depth, position = [0, 0, 0] }: SchematicBoxProps) {
+  const edges = useMemo(
+    () => new THREE.EdgesGeometry(new THREE.BoxGeometry(width, height, depth)),
+    [width, height, depth],
+  );
   return (
     <lineSegments
-      position={position}
-      geometry={edgeGeo}
+      geometry={edges}
       material={blueprintEdgeMaterial}
-      renderOrder={100}
+      position={position}
     />
   );
 }
 ```
 
-4. **Orthogonal Camera Lock:** When switching to Blueprint mode, `SceneContents` animates the camera to a front-facing elevation coordinate $(x_{\text{rack}}, y_{\text{mid}}, 2.2\text{m})$, targets $(x_{\text{rack}}, y_{\text{mid}}, 0)$, and disables `OrbitControls.enableRotate`.
-
 ---
 
-## 5. Pointer Event Isolation & HUD Architecture
+## 5. Pointer Event Isolation & Interaction Architecture
 
-The application layout layers a 2D HTML/DOM Heads-Up Display directly over the 3D WebGL Canvas. Because DOM elements sit higher in the browser rendering stack, naive pointer events would intercept raycasts and prevent 3D object interaction.
+### 5.1 Layered DOM Pointer-Events Routing
 
-```
- +-----------------------------------------------------------------------+
- | HTML DOCUMENT BODY                                                    |
- |                                                                       |
- |   Layer 0 (z-0): 3D R3F WebGL Canvas (Pointer Target for 3D Scene)    |
- |   +---------------------------------------------------------------+   |
- |   | [Scene.tsx] Hardware Meshes, Cable Splines, OrbitControls     |   |
- |   +---------------------------------------------------------------+   |
- |                                                                       |
- |   Layer 1 (z-10): HUD Overlay Container (pointer-events: none)        |
- |   +---------------------------------------------------------------+   |
- |   | [Clicks pass straight through transparent voids to Canvas]    |   |
- |   |                                                               |   |
- |   |   Layer 2: Interactive Controls (pointer-events: auto)        |   |
- |   |   +-----------------------+       +-----------------------+   |   |
- |   |   | Left Control Panel    |       | Right Inventory Panel |   |   |
- |   |   | - Search & Catalog    |       | - Unit List & Shifter |   |   |
- |   |   | - Viewport Toggle     |       | - Power / Depth Range |   |   |
- |   |   +-----------------------+       +-----------------------+   |   |
- |   +---------------------------------------------------------------+   |
- +-----------------------------------------------------------------------+
+The application mounts the 2D HUD directly over the WebGL Canvas within `App.tsx`:
+
+```tsx
+// src/App.tsx
+return (
+  <div className="relative h-screen w-screen overflow-hidden bg-zinc-950">
+    {/* Layer 0: 3D WebGL Canvas (Full interactive receiver) */}
+    <div className="absolute inset-0 z-0">
+      <Scene />
+    </div>
+    
+    {/* Layer 10: 2D DOM HUD (Transparent pass-through overlay) */}
+    <div className="relative z-10 pointer-events-none h-full w-full">
+      <ConfiguratorPanel />
+    </div>
+  </div>
+);
 ```
 
-### 5.1 The Isolation Protocol
+* **Pass-Through Mechanics:** The HUD wrapper sets `pointer-events-none`. All mouse, scroll, and drag interactions over empty regions fall straight through to R3F's raycaster without synthetic event bubbling.
+* **Interactive Opt-In:** Interactive elements inside `ConfiguratorPanel.tsx` (buttons, catalog cards, range sliders) explicitly declare `pointer-events-auto`.
 
-1. **Root Overlay Container (`pointer-events-none`):** The parent HUD container covers the entire viewport (`inset-0`) with `pointer-events-none`. All clicks in empty areas pass directly to R3F's raycaster.
-2. **Interactive Islands (`pointer-events-auto`):** Individual control sidebars, buttons, text inputs, and sliders declare `pointer-events-auto`, re-enabling click, scroll, and drag handlers on those UI elements.
-3. **Pointer Capture during 3D Drag:** When dragging begins on a 3D chassis mesh, the interaction hook executes `e.target.setPointerCapture(e.pointerId)`. This binds subsequent pointer movement to the 3D target even if the cursor moves over HUD elements or exits the browser window, preventing drag loss.
+### 5.2 R3F v9 Pointer Capture & Safe Teardown
 
----
-
-## 6. Chassis & Hardware Module Registry
-
-Hardware rendering is dynamic and extensible through a singleton `HardwareRegistry`. Adding a new hardware type requires zero modifications to the core R3F scene graph.
-
-### 6.1 Implemented Modular Chassis Components
-
-| Chassis Component | File Path | Default Height | Default Power | Port Density | Visual Features |
-|---|---|---|---|---|---|
-| **Server** | `Hardware/Server.tsx` | 1U / 2U / 4U | 350 W - 850 W | 4-8 RJ45 / SFP+ | Hot-swap 2.5″/3.5″ drive caddies, power toggle, activity LEDs |
-| **Switch** | `Hardware/Switch.tsx` | 1U | 120 W | 48 RJ45 + 4 SFP+ | Instanced RJ45 ports, dual status LEDs per port, rack ears |
-| **Router** | `Hardware/Router.tsx` | 1U / 2U | 180 W | 8 SFP28 + Console | Dual hot-swap rear PSUs, management console ports, hex venting |
-| **Patch Panel** | `Hardware/PatchPanel.tsx` | 1U | 0 W | 24 Keystone Jacks | Keystone jack cutouts, write-on label strips, cable tie bars |
-| **Firewall** | `Hardware/Firewall.tsx` | 1U | 220 W | 8 SFP+ + Bypass | High-vis security bezel, status alarm cluster, status LCD |
-| **JBOD Storage** | `Hardware/JBOD.tsx` | 4U | 650 W | 4 SAS-3 / QSFP | 36 top/front-loading 3.5″ drive sleds with release latches |
-| **NAS Storage** | `Hardware/NAS.tsx` | 2U | 280 W | 4 RJ45 + 2 SFP+ | 12 front drive trays, system status OLED display screen |
-| **UPS Unit** | `Hardware/UPS.tsx` | 2U | 50 W (Idle) | C13/C19 Outlets | High-contrast battery status display, LED charge bar, alarm mute |
-| **KVM Console** | `Hardware/KVMConsole.tsx` | 1U | 30 W | 1 VGA/USB Input | Slide-out tray drawer, 17″ tilting LCD panel, integrated keyboard |
-| **Blanking Panel**| `Hardware/BlankingPanel.tsx`| 1U / 2U | 0 W | None | Matte airflow baffle, finger-snap toolless clips, hex perforations |
-| **Brush Panel** | `Hardware/BrushPanel.tsx` | 1U | 0 W | Cable Pass-thru | High-density nylon bristle strip for clean cable passthrough |
-| **Cable Manager** | `Hardware/CableManager.tsx` | 2U | 0 W | D-Ring Channels | High-capacity horizontal routing channel with hinged front cover |
-| **Custom GLTF** | `Hardware/CustomGltfChassis.tsx`| Dynamic | Dynamic | Dynamic | User-uploaded `.glb`/`.gltf` asset with auto-computed bounding box |
-
-### 6.2 The Registry Pattern
+During chassis drag interactions, the pointer must remain locked to the active hardware even if the cursor temporarily escapes the 3D mesh boundary:
 
 ```ts
-// src/utils/hardwareRegistry.ts
-class HardwareRegistry {
-  private renderers = new Map<HardwareType, React.ComponentType<{ hardware: HardwareProps }>>();
-
-  register(type: HardwareType, renderer: React.ComponentType<{ hardware: HardwareProps }>) {
-    this.renderers.set(type, renderer);
-  }
-
-  getRenderer(type: HardwareType) {
-    return this.renderers.get(type);
-  }
+// src/hooks/interactionHandlers.ts
+function asElement(target: EventTarget | null): Element | null {
+  return target instanceof Element ? target : null;
 }
 
-export const hardwareRegistry = new HardwareRegistry();
+export function handlePointerDown(e: ThreeEvent<PointerEvent>, ctx: DragInteractionContext): void {
+  e.stopPropagation();
+  ctx.selectHardware(ctx.hardware.id);
+  ctx.beginDrag({
+    id: ctx.hardware.id,
+    rackUnits: ctx.hardware.rackUnits,
+    depth: ctx.hardware.depth,
+  });
+  ctx.setIsDragging(true);
+  
+  // Lock pointer capture on the underlying canvas DOM element
+  asElement(e.target)?.setPointerCapture(e.pointerId);
+  ctx.capturedPointerIdRef.current = e.pointerId;
+}
 ```
 
-Hardware dispatch in `HardwareMapper.tsx` resolves renderers via this registry, falling back to `GenericFallbackHardware` when an unmapped plugin type is encountered.
+#### Failsafe Teardown (Window Fallback Listener)
+
+If an operating system dialog interrupts the drag, or a `blur` event fires before `pointerup`, the interaction hook guarantees safe teardown via global window listeners in `src/hooks/useHardwareInteraction.ts`:
+
+```ts
+useEffect(() => {
+  if (!isDragging) return;
+  const endDrag = () => {
+    setIsDragging(false);
+    useDragStore.getState().endDrag();
+    if (capturedPointerIdRef.current != null) {
+      const canvas = document.querySelector('canvas');
+      canvas?.releasePointerCapture(capturedPointerIdRef.current);
+      capturedPointerIdRef.current = null;
+    }
+  };
+  window.addEventListener('pointerup', endDrag);
+  window.addEventListener('pointercancel', endDrag);
+  window.addEventListener('blur', endDrag);
+  return () => {
+    window.removeEventListener('pointerup', endDrag);
+    window.removeEventListener('pointercancel', endDrag);
+    window.removeEventListener('blur', endDrag);
+  };
+}, [isDragging]);
+```
+
+---
+
+## 6. Hardware Component Reference Specifications
+
+Each hardware component is a standalone R3F component implementing standard mounting geometry, port registries, and diagnostic indicators:
+
+| Hardware Type | Height ($U$) | Default Depth | Default Power ($W$) | Port Layout | Dynamic Behaviors | Source File |
+|---|---|---|---|---|---|---|
+| **Server** | 1U / 2U / 4U | 0.60 m | 150 / 300 / 500 W | 4× Rear LAN ports | Clickable hot-swap HDD caddies, failure simulation, blinking LEDs | [`Server.tsx`](file:///home/richard/Projects/Ongoing/New/Interactive_Server_Rack_Configurator/src/components/canvas/Hardware/Server.tsx) |
+| **Switch** | 1U | 0.30 m | 50 W | 48× Front RJ45 | Instanced dual 24-port bank, per-port link/activity LEDs, cyan accent | [`Switch.tsx`](file:///home/richard/Projects/Ongoing/New/Interactive_Server_Rack_Configurator/src/components/canvas/Hardware/Switch.tsx) |
+| **Router** | 1U / 2U | 0.40 m | 80 / 150 W | 16× Front SFP+ | Dual hot-swap PSUs, cooling fan grilles, amber/green status cluster | [`Router.tsx`](file:///home/richard/Projects/Ongoing/New/Interactive_Server_Rack_Configurator/src/components/canvas/Hardware/Router.tsx) |
+| **Patch Panel** | 1U | 0.10 m | 0 W | 24× Keystone | 24 individual interactive RJ45 patch ports across front bezel | [`PatchPanel.tsx`](file:///home/richard/Projects/Ongoing/New/Interactive_Server_Rack_Configurator/src/components/canvas/Hardware/PatchPanel.tsx) |
+| **Firewall** | 1U | 0.30 m | 40 W | 8× Copper + 4× SFP+ | Aggressive red anodized wings, diagnostic HA/Alarm cluster, console port | [`Firewall.tsx`](file:///home/richard/Projects/Ongoing/New/Interactive_Server_Rack_Configurator/src/components/canvas/Hardware/Firewall.tsx) |
+| **JBOD** | 4U | 0.65 m | 600 W | None (Internal SAS) | 36× Instanced drive sleds (3×12 grid) with rebuild LEDs | [`JBOD.tsx`](file:///home/richard/Projects/Ongoing/New/Interactive_Server_Rack_Configurator/src/components/canvas/Hardware/JBOD.tsx) |
+| **NAS** | 2U | 0.55 m | 150 W | 4× Rear LAN ports | 12× Drive bays (6×2 grid), glowing cyan OLED telemetry display | [`NAS.tsx`](file:///home/richard/Projects/Ongoing/New/Interactive_Server_Rack_Configurator/src/components/canvas/Hardware/NAS.tsx) |
+| **UPS** | 2U | 0.60 m | −1500 W *(Discharge)* | None (Heavy PDU) | Status LCD readout, battery cell enclosure, red emergency disconnect | [`UPS.tsx`](file:///home/richard/Projects/Ongoing/New/Interactive_Server_Rack_Configurator/src/components/canvas/Hardware/UPS.tsx) |
+| **KVM Console**| 1U | 0.40 m | 30 W | None (Internal) | Slide-out drawer (+15 cm) and unfolding 36° LCD display on selection | [`KVMConsole.tsx`](file:///home/richard/Projects/Ongoing/New/Interactive_Server_Rack_Configurator/src/components/canvas/Hardware/KVMConsole.tsx) |
+| **Blanking Panel**| 1U / 2U | 0.02 m | 0 W | None | Powder-coated airflow barrier with dual plastic snap-in latches | [`BlankingPanel.tsx`](file:///home/richard/Projects/Ongoing/New/Interactive_Server_Rack_Configurator/src/components/canvas/Hardware/BlankingPanel.tsx) |
+| **Brush Panel**| 1U | 0.02 m | 0 W | None | Dense synthetic bristle strip for pass-through cable management | [`BrushPanel.tsx`](file:///home/richard/Projects/Ongoing/New/Interactive_Server_Rack_Configurator/src/components/canvas/Hardware/BrushPanel.tsx) |
+| **Cable Manager**| 2U | 0.08 m | 0 W | None | High-density horizontal D-ring finger duct with front cover plate | [`CableManager.tsx`](file:///home/richard/Projects/Ongoing/New/Interactive_Server_Rack_Configurator/src/components/canvas/Hardware/CableManager.tsx) |
+

@@ -31,6 +31,7 @@ import { HardwareMapper } from './HardwareMapper';
 import { CableMapper } from './Hardware/PatchCable';
 import { DropIndicator } from './interactions/DropIndicator';
 import { ThermalHeatmapOverlay } from './Thermal/ThermalHeatmapOverlay';
+import { NetworkTopologyView } from './Topology/NetworkTopologyView';
 import { exportSceneToGLTF } from '../../utils/exporters/gltfExporter';
 import {
   useConfiguratorStore,
@@ -195,22 +196,26 @@ export function SceneContents({ orbitRef }: SceneContentsProps) {
 
 export function Scene() {
   const orbitRef = useRef<OrbitControlsHandle | null>(null);
+  const viewMode = useConfiguratorStore((s) => s.viewMode);
 
   return (
-    <Canvas
-      shadows
-      camera={{ position: [1.5, 1.2, 1.5], fov: 50 }}
-      gl={{ antialias: true }}
-    >
-      <SceneContents orbitRef={orbitRef} />
-      <OrbitControls
-        ref={orbitRef as any}
-        makeDefault
-        minDistance={0.5}
-        maxDistance={10}
-        target={[0, 0.8, 0]}
-        maxPolarAngle={Math.PI / 2 + 0.05}
-      />
-    </Canvas>
+    <div className="w-full h-full relative">
+      <Canvas
+        shadows
+        camera={{ position: [1.5, 1.2, 1.5], fov: 50 }}
+        gl={{ antialias: true }}
+      >
+        <SceneContents orbitRef={orbitRef} />
+        <OrbitControls
+          ref={orbitRef as any}
+          makeDefault
+          minDistance={0.5}
+          maxDistance={10}
+          target={[0, 0.8, 0]}
+          maxPolarAngle={Math.PI / 2 + 0.05}
+        />
+      </Canvas>
+      {viewMode === 'topology' && <NetworkTopologyView />}
+    </div>
   );
 }

@@ -21,11 +21,14 @@ import {
   HardwareProps,
 } from '../types/rack.types';
 import { CableType } from '../types/cable.types';
+import type { DeviceNetworkConfig, PortNetworkConfig } from '../types/network.types';
 import {
   VoltageStandard,
   BreakerRating,
   FeedFailoverMode,
 } from '../types/electrical.types';
+
+export type ViewMode = '3D' | 'blueprint' | 'thermal' | 'topology';
 import { hardwareRegistry } from '../utils/hardwareRegistry';
 import { generateDevicePorts } from '../utils/portLayout';
 import {
@@ -110,8 +113,8 @@ export interface ConfiguratorState {
   clearAllCables: () => void;
 
   /** Visual presentation mode */
-  viewMode: '3D' | 'blueprint' | 'thermal';
-  setViewMode: (mode: '3D' | 'blueprint' | 'thermal') => void;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
 
   /** Ambient cold aisle temperature in Celsius */
   ambientTemperatureC: number;
@@ -129,6 +132,10 @@ export interface ConfiguratorState {
   setActiveRackId: (rackId: string) => void;
   setRackName: (rackId: string, name: string) => void;
   importNetBoxRack: (rack: RackInstance, cables?: CableProps[]) => void;
+
+  // -- L2/L3 Network Configurations -------------------------------------
+  updateDeviceNetworkConfig: (hardwareId: string, config: Partial<DeviceNetworkConfig>) => void;
+  updatePortNetworkConfig: (hardwareId: string, portId: string, config: Partial<PortNetworkConfig>) => void;
 
   // -- 3-Phase Electrical Simulation ------------------------------------
   voltageStandard: VoltageStandard;
@@ -202,9 +209,16 @@ const createSnapshot = (state: {
     installedHardware: r.installedHardware.map((h) => ({
       ...h,
       position: [...h.position] as Vec3,
+      networkConfig: h.networkConfig
+        ? {
+            ...h.networkConfig,
+            portsConfig: h.networkConfig.portsConfig ? { ...h.networkConfig.portsConfig } : undefined,
+          }
+        : undefined,
       ports: h.ports?.map((p: PortProps) => ({
         ...p,
         position: [...p.position] as Vec3,
+        networkConfig: p.networkConfig ? { ...p.networkConfig } : undefined,
       })),
     })),
   })),
@@ -1049,15 +1063,86 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
 
   selectHardware: (id) => set({ selectedHardwareId: id }),
 
+  updateDeviceNetworkConfig: (hardwareId, config) =>
+    set((state) => {
+      const history = pushHistory(state);
+      const updatedRacks = state.racks.map((r) => ({
+        ...r,
+        installedHardware: r.installedHardware.map((h) => {
+          if (h.id === hardwareId) {
+            return {
+              ...h,
+              networkConfig: {
+                ...h.networkConfig,
+                ...config,
+                portsConfig: {
+                  ...(h.networkConfig?.portsConfig || {}),
+                  ...(config.portsConfig || {}),
+                },
+              },
+            };
+          }
+          return h;
+        }),
+      }));
+
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
+      return {
+        ...history,
+        racks: updatedRacks,
+        installedHardware: activeRack.installedHardware,
+      };
+    }),
+
+  updatePortNetworkConfig: (hardwareId, portId, config) =>
+    set((state) => {
+      const history = pushHistory(state);
+      const updatedRacks = state.racks.map((r) => ({
+        ...r,
+        installedHardware: r.installedHardware.map((h) => {
+          if (h.id === hardwareId) {
+            const currentPortsConfig = h.networkConfig?.portsConfig || {};
+            const currentPortCfg = currentPortsConfig[portId] || {};
+            const updatedPortCfg: PortNetworkConfig = {
+              ...currentPortCfg,
+              ...config,
+              portId,
+            };
+
+            const updatedPorts = h.ports?.map((p) =>
+              p.id === portId ? { ...p, networkConfig: updatedPortCfg } : p,
+            );
+
+            return {
+              ...h,
+              ports: updatedPorts,
+              networkConfig: {
+                ...h.networkConfig,
+                portsConfig: {
+                  ...currentPortsConfig,
+                  [portId]: updatedPortCfg,
+                },
+              },
+            };
+          }
+          return h;
+        }),
+      }));
+
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
+      return {
+        ...history,
+        racks: updatedRacks,
+        installedHardware: activeRack.installedHardware,
+      };
+    }),
+
   toggleViewMode: () =>
-    set((state) => ({
-      viewMode:
-        state.viewMode === '3D'
-          ? 'blueprint'
-          : state.viewMode === 'blueprint'
-          ? 'thermal'
-          : '3D',
-    })),
+    set((state) => {
+      const modes: ViewMode[] = ['3D', 'blueprint', 'thermal', 'topology'];
+      const nextIdx = (modes.indexOf(state.viewMode) + 1) % modes.length;
+      return { viewMode: modes[nextIdx] };
+    }),
 
   setRackType: (rackType, rackId) =>
     set((state) => {
