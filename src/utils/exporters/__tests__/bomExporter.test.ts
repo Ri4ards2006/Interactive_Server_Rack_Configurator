@@ -132,3 +132,4 @@ describe('elevationExporter — 2D Vector SVG Generation', () => {
     expect(svg).toContain('</svg>');
   });
 });
+

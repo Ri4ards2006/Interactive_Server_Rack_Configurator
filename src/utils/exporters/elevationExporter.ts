@@ -191,3 +191,4 @@ export function exportRackElevationSVG(
   const svgContent = generateRackElevationSVG(rack);
   downloadFile(filename, svgContent, 'image/svg+xml;charset=utf-8');
 }
+
