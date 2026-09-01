@@ -92,6 +92,8 @@ export interface DragInteractionContext {
   // ----- Persistent-configurator actions (mutating) -----
   /** Select this hardware in the configurator store. */
   selectHardware: (id: string) => void;
+  /** Record history snapshot before drag mutates position. */
+  recordHistorySnapshot?: () => void;
   /** Write a new world position for this chassis. */
   updateHardwarePosition: (id: string, nextPosition: Vec3) => void;
   /** Read the latest persistent-state snapshot at call time. */
@@ -120,6 +122,7 @@ export function handlePointerDown(
   ctx: DragInteractionContext,
 ): void {
   e.stopPropagation();
+  ctx.recordHistorySnapshot?.();
   ctx.selectHardware(ctx.hardware.id);
   ctx.beginDrag({
     id: ctx.hardware.id,

@@ -162,6 +162,7 @@ export function useHardwareInteraction(
     setIsDragging,
     capturedPointerIdRef,
     selectHardware: useConfiguratorStore.getState().selectHardware,
+    recordHistorySnapshot: useConfiguratorStore.getState().recordHistorySnapshot,
     updateHardwarePosition:
       useConfiguratorStore.getState().updateHardwarePosition,
     readPersistentState: () => {

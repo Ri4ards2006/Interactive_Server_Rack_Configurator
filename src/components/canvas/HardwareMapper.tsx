@@ -1,38 +1,66 @@
 /**
  * HardwareMapper.tsx
  *
- * Dispatches each entry of `installedHardware` to the right 3D
- * component based on its `type`. Lives inside the R3F <Canvas> tree
- * because the dispatch reads from Zustand via `useShallow`.
+ * Dynamically resolves and renders each installed hardware item
+ * by querying the extensible HardwareRegistry.
  *
- * Architectural notes
- * -------------------
- * - Coupled tightly to the `HardwareType` union in
- *   `src/types/rack.types.ts`. Adding a new hardware type requires:
- *     1. Adding the literal to `HardwareType`.
- *     2. Adding a component import + an arm to the switch below.
- *     3. Handling the type in `ConfiguratorPanel.tsx` UI (button list).
- * - Selector uses `useShallow` so re-renders only happen when an item
- *   is added / removed / its data actually changes — NOT on every
- *   store mutation (e.g. selection flip, drag-target mutation).
+ * Architectural notes:
+ * - Decoupled from hardcoded switch statements.
+ * - Supports dynamic runtime registration of new hardware plugins.
+ * - Provides safe fallback rendering for unmapped / experimental hardware.
  */
 
 import { useShallow } from 'zustand/react/shallow';
-import { useConfiguratorStore } from '../../store/useConfiguratorStore';
+import { useConfiguratorStore, RACK_UNIT_HEIGHT, CHASSIS_WIDTH, EDGE_GAP } from '../../store/useConfiguratorStore';
 import type { HardwareProps } from '../../types/rack.types';
+import { hardwareRegistry } from '../../utils/hardwareRegistry';
+import { useHardwareInteraction } from '../../hooks/useHardwareInteraction';
+import { SelectionOutline, SchematicBox, blueprintChassisMaterial, useIsBlueprint, RackMountDetails } from './Hardware/shared';
+import * as THREE from 'three';
 
-import { Server } from './Hardware/Server';
-import { Switch } from './Hardware/Switch';
-import { Router } from './Hardware/Router';
-import { PatchPanel } from './Hardware/PatchPanel';
-import { UPS } from './Hardware/UPS';
-import { KVMConsole } from './Hardware/KVMConsole';
-import { JBOD } from './Hardware/JBOD';
-import { BlankingPanel } from './Hardware/BlankingPanel';
-import { NAS } from './Hardware/NAS';
-import { Firewall } from './Hardware/Firewall';
-import { BrushPanel } from './Hardware/BrushPanel';
-import { CableManager } from './Hardware/CableManager';
+const fallbackMaterial = new THREE.MeshStandardMaterial({
+  color: '#3f3f46',
+  metalness: 0.5,
+  roughness: 0.5,
+});
+
+/**
+ * Universal fallback renderer for custom or unregistered plugins.
+ */
+function GenericFallbackHardware({ hardware }: { hardware: HardwareProps }) {
+  const interaction = useHardwareInteraction(hardware);
+  const isBlueprint = useIsBlueprint();
+  const height = hardware.rackUnits * RACK_UNIT_HEIGHT - EDGE_GAP;
+  const zShift = 0.39 - hardware.depth / 2;
+
+  return (
+    <group
+      position={hardware.position}
+      onPointerOver={interaction.onPointerOver}
+      onPointerOut={interaction.onPointerOut}
+      onPointerDown={interaction.onPointerDown}
+      onPointerMove={interaction.onPointerMove}
+      onPointerUp={interaction.onPointerUp}
+      onPointerCancel={interaction.onPointerCancel}
+    >
+      <RackMountDetails height={height} depth={hardware.depth} isBlueprint={isBlueprint} />
+      <mesh
+        position={[0, 0, zShift]}
+        castShadow={!isBlueprint}
+        receiveShadow={!isBlueprint}
+        material={isBlueprint ? blueprintChassisMaterial : fallbackMaterial}
+      >
+        <boxGeometry args={[CHASSIS_WIDTH, height, hardware.depth]} />
+      </mesh>
+      {isBlueprint && (
+        <SchematicBox width={CHASSIS_WIDTH} height={height} depth={hardware.depth} position={[0, 0, zShift]} />
+      )}
+      {interaction.isSelected && (
+        <SelectionOutline rackUnits={hardware.rackUnits} depth={hardware.depth} position={[0, 0, zShift]} />
+      )}
+    </group>
+  );
+}
 
 export function HardwareMapper() {
   const installedHardware = useConfiguratorStore(
@@ -42,40 +70,11 @@ export function HardwareMapper() {
   return (
     <>
       {installedHardware.map((h: HardwareProps) => {
-        switch (h.type) {
-          case 'server':
-            return <Server key={h.id} hardware={h} />;
-          case 'switch':
-            return <Switch key={h.id} hardware={h} />;
-          case 'router':
-            return <Router key={h.id} hardware={h} />;
-          case 'patch-panel':
-            return <PatchPanel key={h.id} hardware={h} />;
-          case 'ups':
-            return <UPS key={h.id} hardware={h} />;
-          case 'kvm':
-            return <KVMConsole key={h.id} hardware={h} />;
-          case 'jbod':
-            return <JBOD key={h.id} hardware={h} />;
-          case 'blank':
-            return <BlankingPanel key={h.id} hardware={h} />;
-          case 'nas':
-            return <NAS key={h.id} hardware={h} />;
-          case 'firewall':
-            return <Firewall key={h.id} hardware={h} />;
-          case 'brush':
-            return <BrushPanel key={h.id} hardware={h} />;
-          case 'cable-manager':
-            return <CableManager key={h.id} hardware={h} />;
-          default: {
-            // Exhaustiveness guard — TS narrows `h.type` to `never` here
-            // so adding a new HardwareType without updating this switch
-            // becomes a compile error instead of a silent render skip.
-            const _exhaustive: never = h.type;
-            void _exhaustive;
-            return null;
-          }
+        const Component = hardwareRegistry.getRenderer(h.type);
+        if (Component) {
+          return <Component key={h.id} hardware={h} />;
         }
+        return <GenericFallbackHardware key={h.id} hardware={h} />;
       })}
     </>
   );
