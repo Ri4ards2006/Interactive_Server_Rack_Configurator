@@ -29,6 +29,10 @@ import type {
   DataHallConfig,
   TileType,
 } from '../types/room.types';
+import type {
+  TelemetryConfig,
+  ChassisLiveMetrics,
+} from '../types/telemetry.types';
 import {
   VoltageStandard,
   BreakerRating,
@@ -36,6 +40,19 @@ import {
 } from '../types/electrical.types';
 
 export type ViewMode = '3D' | 'blueprint' | 'thermal' | 'topology';
+
+export const DEFAULT_TELEMETRY_CONFIG: TelemetryConfig = {
+  provider: 'mock-stream',
+  endpointUrl: 'http://localhost:9090',
+  pollingIntervalMs: 2000,
+  queryMap: {
+    tempQuery: 'node_hwmon_temp_celsius',
+    powerQuery: 'node_power_watts',
+    fanQuery: 'node_fan_speed_rpm',
+    networkRxQuery: 'rate(node_network_receive_bytes_total[1m]) * 8 / 1000000',
+    networkTxQuery: 'rate(node_network_transmit_bytes_total[1m]) * 8 / 1000000',
+  },
+};
 
 export const DEFAULT_DATA_HALL_CONFIG: DataHallConfig = {
   roomDimensions: {
@@ -193,6 +210,15 @@ export interface ConfiguratorState {
   updateCracUnit: (id: string, updates: Partial<CracUnit>) => void;
   setTileType: (xIdx: number, zIdx: number, type: TileType) => void;
   updateRackPosition: (rackId: string, position: Vec3) => void;
+
+  // -- Live Prometheus / Zabbix Telemetry Engine ------------------------
+  isLiveTelemetryActive: boolean;
+  telemetryConfig: TelemetryConfig;
+  liveMetrics: Record<string, ChassisLiveMetrics>;
+  setLiveTelemetryActive: (active: boolean) => void;
+  toggleLiveTelemetry: () => void;
+  setTelemetryConfig: (config: Partial<TelemetryConfig>) => void;
+  updateLiveMetrics: (metrics: Record<string, ChassisLiveMetrics>) => void;
 
   // -- 3-Phase Electrical Simulation ------------------------------------
   voltageStandard: VoltageStandard;
@@ -568,6 +594,26 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
         r.id === rackId ? { ...r, position } : r,
       ),
     })),
+
+  // -- Live Prometheus / Zabbix Telemetry --------------------------------
+  isLiveTelemetryActive: false,
+  telemetryConfig: DEFAULT_TELEMETRY_CONFIG,
+  liveMetrics: {},
+
+  setLiveTelemetryActive: (isLiveTelemetryActive) => set({ isLiveTelemetryActive }),
+  toggleLiveTelemetry: () => set((state) => ({ isLiveTelemetryActive: !state.isLiveTelemetryActive })),
+  setTelemetryConfig: (config) =>
+    set((state) => ({
+      telemetryConfig: {
+        ...state.telemetryConfig,
+        ...config,
+        queryMap: {
+          ...state.telemetryConfig.queryMap,
+          ...(config.queryMap || {}),
+        },
+      },
+    })),
+  updateLiveMetrics: (liveMetrics) => set({ liveMetrics }),
 
   hddBays: {
     'default-chassis-1': {

@@ -26,6 +26,8 @@ import type { RackInstance } from '../../../types/rack.types';
 
 export function RackThermalVisualizer({ rack }: { rack: RackInstance }) {
   const ambientTemperatureC = useConfiguratorStore((s) => s.ambientTemperatureC);
+  const isLiveTelemetryActive = useConfiguratorStore((s) => s.isLiveTelemetryActive);
+  const liveMetrics = useConfiguratorStore((s) => s.liveMetrics);
 
   const report = useMemo(() => {
     return evaluateRackThermal(rack.installedHardware, {
@@ -42,14 +44,18 @@ export function RackThermalVisualizer({ rack }: { rack: RackInstance }) {
         const hardware = rack.installedHardware.find((h) => h.id === ct.hardwareId);
         if (!hardware) return null;
 
+        const live = isLiveTelemetryActive ? liveMetrics[ct.hardwareId] : undefined;
+        const inletTemp = live ? live.intakeTempC : ct.inletTempC;
+        const exhaustTemp = live ? live.exhaustTempC : ct.exhaustTempC;
+
         const height = hardware.rackUnits * RACK_UNIT_HEIGHT - EDGE_GAP;
         const [hx, hy, hz] = hardware.position;
         const frontZ = 0.392;
         const rearZ = 0.39 - hardware.depth - 0.002;
         const zMid = 0.39 - hardware.depth / 2;
 
-        const inletColor = getThermalColor(ct.inletTempC);
-        const exhaustColor = getThermalColor(ct.exhaustTempC);
+        const inletColor = getThermalColor(inletTemp);
+        const exhaustColor = getThermalColor(exhaustTemp);
 
         return (
           <group key={ct.hardwareId} position={[hx, hy, hz]}>
@@ -92,7 +98,9 @@ export function RackThermalVisualizer({ rack }: { rack: RackInstance }) {
                   color: '#ffffff',
                 }}
               >
-                {ct.inletTempC}°C → {ct.exhaustTempC}°C
+                {live
+                  ? `LIVE: ${live.cpuTempC}°C · ${live.powerDrawWatts}W`
+                  : `${inletTemp}°C → ${exhaustTemp}°C`}
               </div>
             </Html>
 

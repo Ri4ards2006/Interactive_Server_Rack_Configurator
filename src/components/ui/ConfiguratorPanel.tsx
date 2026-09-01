@@ -12,7 +12,7 @@
  * - Zen Mode: toggles sidebar visibility with transition-all duration-300.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useConfiguratorStore, RACK_UNIT_HEIGHT } from '../../store/useConfiguratorStore';
 import type { HardwareProps, HardwareType } from '../../types/rack.types';
@@ -45,6 +45,9 @@ import {
 } from '../../utils/netbox/mockNetboxData';
 import { checkDropValidity } from '../../utils/rackLayout';
 import { calculateTotalCoolingMetrics } from '../../utils/roomLayout';
+import type { TelemetryProvider, ChassisLiveMetrics } from '../../types/telemetry.types';
+import { computeTelemetrySummary } from '../../utils/telemetry/telemetryClient';
+import { generateLiveTelemetrySnapshot } from '../../utils/telemetry/mockTelemetryStream';
 
 interface CatalogItem {
   type: HardwareType;
@@ -394,6 +397,42 @@ export function ConfiguratorPanel() {
     return calculateTotalCoolingMetrics(racks, dataHallConfig.cracUnits);
   }, [racks, dataHallConfig.cracUnits]);
 
+  // Live Telemetry Engine State
+  const isLiveTelemetryActive = useConfiguratorStore((s) => s.isLiveTelemetryActive);
+  const telemetryConfig = useConfiguratorStore((s) => s.telemetryConfig);
+  const liveMetrics = useConfiguratorStore((s) => s.liveMetrics);
+  const setLiveTelemetryActive = useConfiguratorStore((s) => s.setLiveTelemetryActive);
+  const toggleLiveTelemetry = useConfiguratorStore((s) => s.toggleLiveTelemetry);
+  const setTelemetryConfig = useConfiguratorStore((s) => s.setTelemetryConfig);
+  const updateLiveMetrics = useConfiguratorStore((s) => s.updateLiveMetrics);
+
+  const [isTelemetryModalOpen, setIsTelemetryModalOpen] = useState(false);
+
+  // Live Telemetry Poller Loop
+  useEffect(() => {
+    if (!isLiveTelemetryActive) return;
+
+    let tick = 0;
+    // Immediate initial snapshot
+    if (telemetryConfig.provider === 'mock-stream') {
+      updateLiveMetrics(generateLiveTelemetrySnapshot(racks, ambientTemperatureC, tick));
+    }
+
+    const interval = setInterval(() => {
+      tick++;
+      if (telemetryConfig.provider === 'mock-stream') {
+        const snapshot = generateLiveTelemetrySnapshot(racks, ambientTemperatureC, tick);
+        updateLiveMetrics(snapshot);
+      }
+    }, telemetryConfig.pollingIntervalMs || 2000);
+
+    return () => clearInterval(interval);
+  }, [isLiveTelemetryActive, telemetryConfig, racks, ambientTemperatureC, updateLiveMetrics]);
+
+  const telemetrySummary = useMemo(() => {
+    return computeTelemetrySummary(liveMetrics);
+  }, [liveMetrics]);
+
   // Derived states
   const { usedUnits, totalPowerDraw } = useMemo(() => {
     let used = 0;
@@ -619,6 +658,21 @@ export function ConfiguratorPanel() {
           title="Toggle Data Hall 3D Room Planning Environment"
         >
           {isRoomViewEnabled ? '🏢 DATA HALL [ON]' : '🏢 DATA HALL [OFF]'}
+        </button>
+
+        {/* Live Telemetry Modal & Stream Button */}
+        <button
+          type="button"
+          onClick={() => setIsTelemetryModalOpen(true)}
+          className={`px-3 py-1.5 text-[10px] font-mono tracking-wider rounded border transition-all cursor-pointer shadow-md active:scale-95 shrink-0 flex items-center gap-1.5 ${
+            isLiveTelemetryActive
+              ? 'bg-rose-950/80 border-rose-500 text-rose-300 font-bold shadow-[0_0_10px_rgba(244,63,94,0.3)]'
+              : 'bg-zinc-900/90 border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+          }`}
+          title="Open Live Prometheus / Sensor Telemetry Dashboard"
+        >
+          <span className={`w-2 h-2 rounded-full ${isLiveTelemetryActive ? 'bg-rose-500 animate-ping' : 'bg-zinc-600'}`} />
+          <span>{isLiveTelemetryActive ? '📡 LIVE STREAM' : '📡 TELEMETRY'}</span>
         </button>
 
         {/* Rack Bay Switcher Tabs */}
@@ -2112,6 +2166,227 @@ export function ConfiguratorPanel() {
                     {log}
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------------------------------------------------------- */}
+      {/* LIVE PROMETHEUS / TELEMETRY MODAL                                 */}
+      {/* ----------------------------------------------------------------- */}
+      {isTelemetryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl max-w-3xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/60">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-3 h-3 rounded-full ${
+                    isLiveTelemetryActive
+                      ? 'bg-rose-500 animate-ping shadow-[0_0_10px_#f43f5e]'
+                      : 'bg-zinc-600'
+                  }`}
+                />
+                <div>
+                  <h2 className="text-sm font-bold tracking-widest text-zinc-100 uppercase">
+                    📡 LIVE DATACENTER SENSOR & TELEMETRY STREAM
+                  </h2>
+                  <span className="text-[10px] text-zinc-400">
+                    REAL-TIME PROMETHEUS PROMQL POLLING & HARDWARE HEALTH MONITORING
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTelemetryModalOpen(false)}
+                className="text-zinc-500 hover:text-zinc-200 text-lg font-mono px-2 py-1 rounded hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto flex flex-col gap-4 text-[10px] custom-scrollbar">
+              {/* Telemetry Stream Control Header */}
+              <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-lg flex justify-between items-center flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={toggleLiveTelemetry}
+                    className={`px-4 py-2 text-xs font-bold rounded flex items-center gap-2 cursor-pointer transition-all active:scale-95 ${
+                      isLiveTelemetryActive
+                        ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg'
+                    }`}
+                  >
+                    <span>{isLiveTelemetryActive ? '⏸ PAUSE STREAM' : '▶ START STREAM'}</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-500">PROVIDER:</span>
+                    <select
+                      value={telemetryConfig.provider}
+                      onChange={(e) =>
+                        setTelemetryConfig({ provider: e.target.value as TelemetryProvider })
+                      }
+                      className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-[10px] text-zinc-200"
+                    >
+                      <option value="mock-stream">Built-in Physics Stream</option>
+                      <option value="prometheus">Prometheus REST API</option>
+                      <option value="zabbix">Zabbix JSON-RPC</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-500">POLL INTERVAL:</span>
+                    <select
+                      value={telemetryConfig.pollingIntervalMs}
+                      onChange={(e) =>
+                        setTelemetryConfig({ pollingIntervalMs: Number(e.target.value) })
+                      }
+                      className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-[10px] text-zinc-200"
+                    >
+                      <option value={1000}>1.0s (High-Frequency)</option>
+                      <option value={2000}>2.0s (Normal)</option>
+                      <option value={5000}>5.0s (Conservative)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {telemetryConfig.provider === 'prometheus' && (
+                  <div className="w-full flex items-center gap-2 mt-2 pt-2 border-t border-zinc-850">
+                    <span className="text-zinc-500 shrink-0">ENDPOINT:</span>
+                    <input
+                      type="text"
+                      value={telemetryConfig.endpointUrl}
+                      onChange={(e) => setTelemetryConfig({ endpointUrl: e.target.value })}
+                      placeholder="http://localhost:9090"
+                      className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-[10px] text-zinc-200"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Aggregate Telemetry Summary Stats */}
+              <div className="grid grid-cols-4 gap-2">
+                <div className="p-2.5 bg-zinc-950/60 border border-zinc-855 rounded">
+                  <span className="text-zinc-500 block text-[9px]">TOTAL LIVE POWER</span>
+                  <span className="text-sm font-bold text-emerald-400 mt-0.5 block">
+                    {telemetrySummary.totalLivePowerWatts.toLocaleString()} W
+                  </span>
+                </div>
+                <div className="p-2.5 bg-zinc-950/60 border border-zinc-855 rounded">
+                  <span className="text-zinc-500 block text-[9px]">AVG / MAX CPU TEMP</span>
+                  <span className="text-sm font-bold text-cyan-400 mt-0.5 block">
+                    {telemetrySummary.avgCpuTempC}°C · {telemetrySummary.maxCpuTempC}°C
+                  </span>
+                </div>
+                <div className="p-2.5 bg-zinc-950/60 border border-zinc-855 rounded">
+                  <span className="text-zinc-500 block text-[9px]">HEALTH STATUS</span>
+                  <span className="text-sm font-bold text-zinc-200 mt-0.5 block">
+                    <span className="text-emerald-400">{telemetrySummary.healthyCount} OK</span> ·{' '}
+                    <span className="text-amber-400">{telemetrySummary.warningCount} WARN</span> ·{' '}
+                    <span className="text-red-400">{telemetrySummary.criticalCount} CRIT</span>
+                  </span>
+                </div>
+                <div className="p-2.5 bg-zinc-950/60 border border-zinc-855 rounded">
+                  <span className="text-zinc-500 block text-[9px]">TOTAL NET THROUGHPUT</span>
+                  <span className="text-sm font-bold text-purple-400 mt-0.5 block">
+                    {telemetrySummary.totalNetworkThroughputMbps.toLocaleString()} Mbps
+                  </span>
+                </div>
+              </div>
+
+              {/* Per-Chassis Live Metric Cards */}
+              <div className="flex flex-col gap-2">
+                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">
+                  REAL-TIME CHASSIS SENSOR READINGS ({Object.keys(liveMetrics).length} ASSETS)
+                </span>
+                <div className="max-h-60 overflow-y-auto flex flex-col gap-1.5 custom-scrollbar pr-1">
+                  {Object.keys(liveMetrics).length === 0 ? (
+                    <div className="p-4 text-center text-zinc-500 bg-zinc-950/40 rounded border border-zinc-850">
+                      Telemetry stream is paused. Click [ START STREAM ] above to begin live sensor polling.
+                    </div>
+                  ) : (
+                    racks.flatMap((r) =>
+                      r.installedHardware.map((h) => {
+                        const m = liveMetrics[h.id];
+                        if (!m) return null;
+
+                        const isWarning = m.healthStatus === 'warning';
+                        const isCritical = m.healthStatus === 'critical';
+
+                        return (
+                          <div
+                            key={h.id}
+                            className={`p-2 rounded border flex items-center justify-between transition-all ${
+                              isCritical
+                                ? 'bg-red-950/30 border-red-800/80 shadow-[0_0_8px_rgba(239,68,68,0.2)]'
+                                : isWarning
+                                ? 'bg-amber-950/20 border-amber-800/60'
+                                : 'bg-zinc-950/60 border-zinc-850'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`w-2 h-2 rounded-full ${
+                                  isCritical
+                                    ? 'bg-red-500 animate-ping'
+                                    : isWarning
+                                    ? 'bg-amber-500'
+                                    : 'bg-emerald-500'
+                                }`}
+                              />
+                              <div>
+                                <span className="font-bold text-zinc-200 block">
+                                  {h.networkConfig?.hostname || h.modelName || `${h.type.toUpperCase()}-${h.id.slice(0, 4)}`}
+                                </span>
+                                <span className="text-[8px] text-zinc-500">
+                                  {r.name} · {h.rackUnits}U · {h.type}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Gauges */}
+                            <div className="flex items-center gap-4 text-right font-mono">
+                              <div>
+                                <span className="text-[7.5px] text-zinc-500 block">CPU TEMP</span>
+                                <span
+                                  className={`font-bold ${
+                                    isCritical
+                                      ? 'text-red-400'
+                                      : isWarning
+                                      ? 'text-amber-400'
+                                      : 'text-emerald-400'
+                                  }`}
+                                >
+                                  {m.cpuTempC}°C
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-[7.5px] text-zinc-500 block">FAN SPEED</span>
+                                <span className="text-cyan-400 font-bold">
+                                  {m.fanSpeedRpm.toLocaleString()} RPM
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-[7.5px] text-zinc-500 block">LIVE POWER</span>
+                                <span className="text-zinc-200 font-bold">{m.powerDrawWatts} W</span>
+                              </div>
+                              <div>
+                                <span className="text-[7.5px] text-zinc-500 block">NET I/O</span>
+                                <span className="text-purple-300 font-bold">
+                                  ↓{m.networkRxMbps} ↑{m.networkTxMbps}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }),
+                    )
+                  )}
+                </div>
               </div>
             </div>
           </div>
