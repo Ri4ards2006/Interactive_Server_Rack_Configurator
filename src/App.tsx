@@ -5,14 +5,29 @@ import { useConfiguratorStore } from './store/useConfiguratorStore';
 
 export function App() {
   const selectHardware = useConfiguratorStore((s) => s.selectHardware);
+  const undo = useConfiguratorStore((s) => s.undo);
+  const redo = useConfiguratorStore((s) => s.redo);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') selectHardware(null);
+      if (e.key === 'Escape') {
+        selectHardware(null);
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        if (e.shiftKey) {
+          e.preventDefault();
+          redo();
+        } else {
+          e.preventDefault();
+          undo();
+        }
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'y') {
+        e.preventDefault();
+        redo();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectHardware]);
+  }, [selectHardware, undo, redo]);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-zinc-950 font-sans antialiased text-zinc-100">

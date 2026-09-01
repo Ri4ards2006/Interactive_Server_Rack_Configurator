@@ -9,7 +9,7 @@
 import type { ComponentType } from 'react';
 import type { HardwareProps, HardwareType, PortProps } from '../types/rack.types';
 import type { HardwareCategory, HardwarePluginDefinition } from '../types/plugin.types';
-import { CHASSIS_WIDTH, RACK_UNIT_HEIGHT, EDGE_GAP } from '../store/useConfiguratorStore';
+import { generateDevicePorts } from './portLayout';
 
 // Built-in Hardware Component Renderers
 import { Server } from '../components/canvas/Hardware/Server';
@@ -43,7 +43,6 @@ export class HardwareRegistryService {
     renderer?: HardwareRendererComponent,
   ): void {
     this.plugins.set(plugin.id, plugin);
-    // Also index by type if not already occupied
     if (!this.plugins.has(plugin.type)) {
       this.plugins.set(plugin.type, plugin);
     }
@@ -71,7 +70,6 @@ export class HardwareRegistryService {
    * Retrieve all registered plugins.
    */
   public getAllPlugins(): HardwarePluginDefinition[] {
-    // Unique list by plugin ID
     const unique = new Map<string, HardwarePluginDefinition>();
     for (const plugin of this.plugins.values()) {
       unique.set(plugin.id, plugin);
@@ -100,21 +98,61 @@ export class HardwareRegistryService {
     type: HardwareType,
     rackUnits: number,
   ): { powerDraw: number; depth: number; ports?: PortProps[] } {
-    const plugin = this.getPlugin(type);
-    if (!plugin) {
-      return { powerDraw: 150, depth: 0.6 };
+    let power = 150;
+    let depth = 0.6;
+
+    switch (type) {
+      case 'server':
+        power = rackUnits === 1 ? 150 : rackUnits === 2 ? 300 : 500;
+        depth = 0.6;
+        break;
+      case 'switch':
+        power = 50;
+        depth = 0.3;
+        break;
+      case 'router':
+        power = rackUnits === 1 ? 80 : 150;
+        depth = 0.4;
+        break;
+      case 'patch-panel':
+        power = 0;
+        depth = 0.1;
+        break;
+      case 'ups':
+        power = -1500;
+        depth = 0.6;
+        break;
+      case 'kvm':
+        power = 30;
+        depth = 0.4;
+        break;
+      case 'jbod':
+        power = 600;
+        depth = 0.65;
+        break;
+      case 'blank':
+        power = 0;
+        depth = 0.02;
+        break;
+      case 'nas':
+        power = 150;
+        depth = 0.55;
+        break;
+      case 'firewall':
+        power = 40;
+        depth = 0.3;
+        break;
+      case 'brush':
+        power = 0;
+        depth = 0.02;
+        break;
+      case 'cable-manager':
+        power = 0;
+        depth = 0.08;
+        break;
     }
 
-    let power = plugin.defaultPowerDraw;
-    if (type === 'server') {
-      power = rackUnits === 1 ? 150 : rackUnits === 2 ? 300 : 500;
-    } else if (type === 'router') {
-      power = rackUnits === 1 ? 80 : 150;
-    }
-
-    const depth = plugin.depthMeters;
-    const ports = plugin.portsGenerator ? plugin.portsGenerator(depth, rackUnits) : undefined;
-
+    const ports = generateDevicePorts(type, depth, rackUnits);
     return { powerDraw: power, depth, ports };
   }
 
@@ -141,15 +179,7 @@ export class HardwareRegistryService {
           targetDeltaTCelsius: 15,
           airflowDirection: 'front-to-back',
         },
-        portsGenerator: (depth) => {
-          const serverPortsX = [-0.1, -0.06, 0.06, 0.1];
-          return serverPortsX.map((x, idx) => ({
-            id: `port-${idx + 1}`,
-            label: `LAN ${idx + 1}`,
-            position: [x, -0.008, 0.39 - depth],
-            cableId: null,
-          }));
-        },
+        portsGenerator: (depth) => generateDevicePorts('server', depth),
         interactions: { hasHotSwapDrives: true },
       },
       Server,
@@ -173,42 +203,7 @@ export class HardwareRegistryService {
           targetDeltaTCelsius: 8,
           airflowDirection: 'front-to-back',
         },
-        portsGenerator: () => {
-          const ports: PortProps[] = [];
-          const portRows = 2;
-          const PORT_COLS = 24;
-          const PORT_W = 0.008;
-          const PORT_GAP_X = 0.004;
-          const PORT_GAP_Y = 0.004;
-          const PORT_H = 0.006;
-          const groupWidth = 12 * PORT_W + 11 * PORT_GAP_X;
-          const gapBetweenGroups = 0.02;
-          const startY = -((portRows * PORT_H + (portRows - 1) * PORT_GAP_Y) / 2) - 0.002;
-
-          const getPortX = (c: number) => {
-            const isSecondGroup = c >= 12;
-            const groupCol = c % 12;
-            const base = -groupWidth - gapBetweenGroups / 2;
-            if (isSecondGroup) {
-              return gapBetweenGroups / 2 + groupCol * (PORT_W + PORT_GAP_X) + PORT_W / 2;
-            }
-            return base + groupCol * (PORT_W + PORT_GAP_X) + PORT_W / 2;
-          };
-
-          let pIndex = 1;
-          for (let r = 0; r < portRows; r++) {
-            for (let c = 0; c < PORT_COLS; c++) {
-              ports.push({
-                id: `port-${pIndex}`,
-                label: `Port ${pIndex}`,
-                position: [getPortX(c), startY + r * (PORT_H + PORT_GAP_Y), 0.39 + 0.002],
-                cableId: null,
-              });
-              pIndex++;
-            }
-          }
-          return ports;
-        },
+        portsGenerator: (depth) => generateDevicePorts('switch', depth),
       },
       Switch,
     );
@@ -232,38 +227,7 @@ export class HardwareRegistryService {
           targetDeltaTCelsius: 10,
           airflowDirection: 'front-to-back',
         },
-        portsGenerator: (_, rackUnits) => {
-          const ports: PortProps[] = [];
-          const sfpRows = 1;
-          const SFP_COLS = 16;
-          const SFP_W = 0.009;
-          const SFP_GAP_X = 0.006;
-          const SFP_GAP_Y = 0.006;
-          const SFP_H = 0.009;
-          const chassisHeight = (rackUnits || 1) * RACK_UNIT_HEIGHT - EDGE_GAP;
-          const totalSfpGridW = SFP_COLS * SFP_W + (SFP_COLS - 1) * SFP_GAP_X;
-          const totalSfpGridH = sfpRows * SFP_H + (sfpRows - 1) * SFP_GAP_Y;
-          const sfpStartX = CHASSIS_WIDTH / 2 - 0.025 - totalSfpGridW + SFP_W / 2;
-          const sfpStartY = -chassisHeight / 2 + totalSfpGridH / 2 + 0.01;
-
-          let pIndex = 1;
-          for (let r = 0; r < sfpRows; r++) {
-            for (let c = 0; c < SFP_COLS; c++) {
-              ports.push({
-                id: `sfp-${pIndex}`,
-                label: `SFP+ ${pIndex}`,
-                position: [
-                  sfpStartX + c * (SFP_W + SFP_GAP_X),
-                  sfpStartY + r * (SFP_H + SFP_GAP_Y),
-                  0.39 + 0.003,
-                ],
-                cableId: null,
-              });
-              pIndex++;
-            }
-          }
-          return ports;
-        },
+        portsGenerator: (depth, ru) => generateDevicePorts('router', depth, ru),
       },
       Router,
     );
@@ -286,14 +250,7 @@ export class HardwareRegistryService {
           targetDeltaTCelsius: 0,
           airflowDirection: 'passive',
         },
-        portsGenerator: () => {
-          return Array.from({ length: 24 }, (_, idx) => ({
-            id: `port-${idx + 1}`,
-            label: `Port ${idx + 1}`,
-            position: [-0.16 + idx * (0.32 / 23), 0, 0.39 + 0.002],
-            cableId: null,
-          }));
-        },
+        portsGenerator: (depth) => generateDevicePorts('patch-panel', depth),
       },
       PatchPanel,
     );
@@ -316,28 +273,7 @@ export class HardwareRegistryService {
           targetDeltaTCelsius: 6,
           airflowDirection: 'front-to-back',
         },
-        portsGenerator: () => {
-          const ports: PortProps[] = [];
-          const copperPortsX = [-0.06, -0.046, -0.032, -0.018, 0.002, 0.016, 0.030, 0.044];
-          copperPortsX.forEach((x, idx) => {
-            ports.push({
-              id: `port-${idx + 1}`,
-              label: `GE ${idx + 1}`,
-              position: [x, -0.002, 0.39 + 0.003],
-              cableId: null,
-            });
-          });
-          const sfpPortsX = [0.076, 0.092, 0.108, 0.124];
-          sfpPortsX.forEach((x, idx) => {
-            ports.push({
-              id: `sfp-${idx + 1}`,
-              label: `SFP+ ${idx + 1}`,
-              position: [x, -0.002, 0.39 + 0.003],
-              cableId: null,
-            });
-          });
-          return ports;
-        },
+        portsGenerator: (depth) => generateDevicePorts('firewall', depth),
       },
       Firewall,
     );
@@ -383,15 +319,7 @@ export class HardwareRegistryService {
           targetDeltaTCelsius: 12,
           airflowDirection: 'front-to-back',
         },
-        portsGenerator: (depth) => {
-          const serverPortsX = [-0.1, -0.06, 0.06, 0.1];
-          return serverPortsX.map((x, idx) => ({
-            id: `port-${idx + 1}`,
-            label: `LAN ${idx + 1}`,
-            position: [x, -0.008, 0.39 - depth],
-            cableId: null,
-          }));
-        },
+        portsGenerator: (depth) => generateDevicePorts('nas', depth),
         interactions: { hasHotSwapDrives: true, driveCount: 12 },
       },
       NAS,

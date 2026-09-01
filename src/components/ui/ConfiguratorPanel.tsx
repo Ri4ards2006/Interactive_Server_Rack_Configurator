@@ -296,6 +296,10 @@ export function ConfiguratorPanel() {
   const isDoorOpen = useConfiguratorStore((s) => s.isDoorOpen);
   const setRackType = useConfiguratorStore((s) => s.setRackType);
   const setDoorOpen = useConfiguratorStore((s) => s.setDoorOpen);
+  const undo = useConfiguratorStore((s) => s.undo);
+  const redo = useConfiguratorStore((s) => s.redo);
+  const canUndo = useConfiguratorStore((s) => s.canUndo);
+  const canRedo = useConfiguratorStore((s) => s.canRedo);
 
   // Derived states
   const { usedUnits, totalPowerDraw } = useMemo(() => {
@@ -325,6 +329,7 @@ export function ConfiguratorPanel() {
 
   // Property inspector mutator using Zustand internal setState
   const updateHardwareProperty = (id: string, updates: Partial<HardwareProps>) => {
+    useConfiguratorStore.getState().recordHistorySnapshot();
     useConfiguratorStore.setState((state) => ({
       installedHardware: state.installedHardware.map((h) =>
         h.id === id ? { ...h, ...updates } : h
@@ -363,6 +368,7 @@ export function ConfiguratorPanel() {
     if (!selectedHardware) return;
     const [x, y, z] = selectedHardware.position;
     const nextY = direction === 'up' ? y + RACK_UNIT_HEIGHT : y - RACK_UNIT_HEIGHT;
+    useConfiguratorStore.getState().recordHistorySnapshot();
     updateHardwarePosition(selectedHardware.id, [x, nextY, z]);
   };
 
@@ -370,15 +376,47 @@ export function ConfiguratorPanel() {
     <div className="absolute inset-0 pointer-events-none font-mono text-zinc-300 z-10">
       
       {/* ----------------------------------------------------------------- */}
-      {/* ZEN MODE TOGGLE (Top Center HUD Trigger)                          */}
+      {/* ZEN MODE & HISTORY CONTROLS (Top Center HUD Trigger)             */}
       {/* ----------------------------------------------------------------- */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-4 z-50 pointer-events-auto">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-3 z-50 pointer-events-auto">
         <button
+          type="button"
           onClick={() => setIsZen(!isZen)}
-          className="px-4 py-2 border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-xs font-mono tracking-widest text-cyan-400 uppercase rounded cursor-pointer"
+          className="px-4 py-2 border border-zinc-700 bg-zinc-900/90 hover:bg-zinc-800 text-xs font-mono tracking-widest text-cyan-400 uppercase rounded cursor-pointer transition-all shadow-md active:scale-95"
         >
           {isZen ? '[ SHOW CONTROL PANEL ]' : '[ TOGGLE CONTROL PANEL ]'}
         </button>
+        <div className="flex items-center gap-1 bg-zinc-900/90 border border-zinc-700 rounded p-1 shadow-md">
+          <button
+            type="button"
+            onClick={undo}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z / Cmd+Z)"
+            className={`px-2.5 py-1 text-[10px] font-mono rounded flex items-center gap-1.5 transition-all ${
+              canUndo
+                ? 'text-zinc-200 hover:text-cyan-400 hover:bg-zinc-800 cursor-pointer active:scale-95'
+                : 'text-zinc-600 cursor-not-allowed opacity-40'
+            }`}
+          >
+            <span>↶</span>
+            <span>UNDO</span>
+          </button>
+          <div className="h-3 w-px bg-zinc-800" />
+          <button
+            type="button"
+            onClick={redo}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Y / Cmd+Shift+Z)"
+            className={`px-2.5 py-1 text-[10px] font-mono rounded flex items-center gap-1.5 transition-all ${
+              canRedo
+                ? 'text-zinc-200 hover:text-cyan-400 hover:bg-zinc-800 cursor-pointer active:scale-95'
+                : 'text-zinc-600 cursor-not-allowed opacity-40'
+            }`}
+          >
+            <span>↷</span>
+            <span>REDO</span>
+          </button>
+        </div>
       </div>
 
       {/* ----------------------------------------------------------------- */}
