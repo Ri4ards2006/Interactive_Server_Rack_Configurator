@@ -128,6 +128,7 @@ export interface ConfiguratorState {
   removeRack: (rackId: string) => void;
   setActiveRackId: (rackId: string) => void;
   setRackName: (rackId: string, name: string) => void;
+  importNetBoxRack: (rack: RackInstance, cables?: CableProps[]) => void;
 
   // -- 3-Phase Electrical Simulation ------------------------------------
   voltageStandard: VoltageStandard;
@@ -530,6 +531,34 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
       return {
         ...history,
         racks: state.racks.map((r) => (r.id === rackId ? { ...r, name } : r)),
+      };
+    }),
+
+  importNetBoxRack: (newRack, newCables = []) =>
+    set((state) => {
+      const history = pushHistory(state);
+      const updatedRacks = state.racks.map((r) =>
+        r.id === state.activeRackId
+          ? {
+              ...newRack,
+              id: r.id,
+              position: r.position,
+              name: newRack.name || r.name,
+              installedHardware: newRack.installedHardware.map((h) => ({
+                ...h,
+                rackId: r.id,
+              })),
+            }
+          : r,
+      );
+
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
+      return {
+        ...history,
+        racks: updatedRacks,
+        installedHardware: activeRack.installedHardware,
+        capacity: activeRack.capacity,
+        cables: [...state.cables, ...newCables],
       };
     }),
 
