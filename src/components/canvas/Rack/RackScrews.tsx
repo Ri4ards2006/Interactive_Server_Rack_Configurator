@@ -50,15 +50,16 @@ const blueprintScrewMaterial = new THREE.MeshBasicMaterial({
 interface RackScrewsProps {
   /** Optional override; defaults to `capacity * 2`. */
   count?: number;
+  capacity?: number;
 }
 
-export function RackScrews({ count }: RackScrewsProps) {
+export function RackScrews({ count, capacity: propCapacity }: RackScrewsProps = {}) {
   const ref = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const isBlueprint = useIsBlueprint();
 
-  // `capacity` is a primitive so a plain `===` selector is optimal.
-  const capacity = useConfiguratorStore((s) => s.capacity);
+  const storeCapacity = useConfiguratorStore((s) => s.capacity);
+  const capacity = propCapacity ?? storeCapacity;
   const totalScrews = count ?? capacity * 2;
 
   useLayoutEffect(() => {

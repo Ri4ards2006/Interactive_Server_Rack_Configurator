@@ -53,11 +53,21 @@ const glassMaterial = new THREE.MeshStandardMaterial({
   metalness: 0.9,
 });
 
-export function RackFrame() {
-  const capacity = useConfiguratorStore((s) => s.capacity);
-  const rackType = useConfiguratorStore((s) => s.rackType);
-  const isDoorOpen = useConfiguratorStore((s) => s.isDoorOpen);
+export interface RackFrameProps {
+  capacity?: number;
+  rackType?: '2-post' | '4-post' | 'cabinet';
+  isDoorOpen?: boolean;
+}
+
+export function RackFrame(props: RackFrameProps = {}) {
+  const storeCapacity = useConfiguratorStore((s) => s.capacity);
+  const storeRackType = useConfiguratorStore((s) => s.rackType);
+  const storeIsDoorOpen = useConfiguratorStore((s) => s.isDoorOpen);
   const isBlueprint = useIsBlueprint();
+
+  const capacity = props.capacity ?? storeCapacity;
+  const rackType = props.rackType ?? storeRackType;
+  const isDoorOpen = props.isDoorOpen ?? storeIsDoorOpen;
   
   const height = capacity * RACK_UNIT_HEIGHT;
   const doorGroupRef = useRef<THREE.Group>(null);

@@ -1,13 +1,8 @@
 /**
  * HardwareMapper.tsx
  *
- * Dynamically resolves and renders each installed hardware item
- * by querying the extensible HardwareRegistry.
- *
- * Architectural notes:
- * - Decoupled from hardcoded switch statements.
- * - Supports dynamic runtime registration of new hardware plugins.
- * - Provides safe fallback rendering for unmapped / experimental hardware.
+ * Dynamically resolves and renders installed hardware items
+ * for a specific rack bay or active rack by querying HardwareRegistry.
  */
 
 import { useShallow } from 'zustand/react/shallow';
@@ -62,14 +57,28 @@ function GenericFallbackHardware({ hardware }: { hardware: HardwareProps }) {
   );
 }
 
-export function HardwareMapper() {
-  const installedHardware = useConfiguratorStore(
-    useShallow((s) => s.installedHardware),
+export function HardwareMapper({
+  rackId,
+  hardwareList,
+}: {
+  rackId?: string;
+  hardwareList?: HardwareProps[];
+} = {}) {
+  const storeHardware = useConfiguratorStore(
+    useShallow((s) => {
+      if (rackId) {
+        const r = s.racks.find((item) => item.id === rackId);
+        return r ? r.installedHardware : [];
+      }
+      return s.installedHardware;
+    }),
   );
+
+  const items = hardwareList || storeHardware;
 
   return (
     <>
-      {installedHardware.map((h: HardwareProps) => {
+      {items.map((h: HardwareProps) => {
         const Component = hardwareRegistry.getRenderer(h.type);
         if (Component) {
           return <Component key={h.id} hardware={h} />;

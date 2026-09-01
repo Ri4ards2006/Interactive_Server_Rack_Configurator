@@ -306,6 +306,13 @@ export function ConfiguratorPanel() {
   const canUndo = useConfiguratorStore((s) => s.canUndo);
   const canRedo = useConfiguratorStore((s) => s.canRedo);
 
+  // Multi-Rack baying state & actions
+  const racks = useConfiguratorStore(useShallow((s) => s.racks));
+  const activeRackId = useConfiguratorStore((s) => s.activeRackId);
+  const addRack = useConfiguratorStore((s) => s.addRack);
+  const removeRack = useConfiguratorStore((s) => s.removeRack);
+  const setActiveRackId = useConfiguratorStore((s) => s.setActiveRackId);
+
   // Cabling state & actions
   const cables = useConfiguratorStore(useShallow((s) => s.cables));
   const activeCableType = useConfiguratorStore((s) => s.activeCableType);
@@ -329,6 +336,27 @@ export function ConfiguratorPanel() {
     }
     return { usedUnits: used, totalPowerDraw: power };
   }, [installedHardware]);
+
+  const { rowPower, rowUsedUnits, rowCapacity, rowHardwareCount } = useMemo(() => {
+    let p = 0;
+    let u = 0;
+    let c = 0;
+    let hCount = 0;
+    for (const r of racks) {
+      c += r.capacity;
+      for (const h of r.installedHardware) {
+        p += h.powerDraw;
+        u += h.rackUnits;
+        hCount++;
+      }
+    }
+    return {
+      rowPower: p,
+      rowUsedUnits: u,
+      rowCapacity: c,
+      rowHardwareCount: hCount,
+    };
+  }, [racks]);
 
   const totalCableDistance = useMemo(() => {
     return cables.reduce((acc, c) => acc + (c.lengthMeters || 0.4), 0);
@@ -406,17 +434,60 @@ export function ConfiguratorPanel() {
     <div className="absolute inset-0 pointer-events-none font-mono text-zinc-300 z-10">
       
       {/* ----------------------------------------------------------------- */}
-      {/* ZEN MODE & HISTORY CONTROLS (Top Center HUD Trigger)             */}
+      {/* ZEN MODE, RACK BAY SWITCHER & HISTORY (Top Center HUD)           */}
       {/* ----------------------------------------------------------------- */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-3 z-50 pointer-events-auto">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2.5 z-50 pointer-events-auto flex-wrap justify-center max-w-[95vw]">
         <button
           type="button"
           onClick={() => setIsZen(!isZen)}
-          className="px-4 py-2 border border-zinc-700 bg-zinc-900/90 hover:bg-zinc-800 text-xs font-mono tracking-widest text-cyan-400 uppercase rounded cursor-pointer transition-all shadow-md active:scale-95"
+          className="px-3.5 py-1.5 border border-zinc-700 bg-zinc-900/90 hover:bg-zinc-800 text-[11px] font-mono tracking-widest text-cyan-400 uppercase rounded cursor-pointer transition-all shadow-md active:scale-95 shrink-0"
         >
-          {isZen ? '[ SHOW CONTROL PANEL ]' : '[ TOGGLE CONTROL PANEL ]'}
+          {isZen ? '[ SHOW PANEL ]' : '[ TOGGLE PANEL ]'}
         </button>
+
+        {/* Rack Bay Switcher Tabs */}
         <div className="flex items-center gap-1 bg-zinc-900/90 border border-zinc-700 rounded p-1 shadow-md">
+          {racks.map((r, idx) => {
+            const isActive = r.id === activeRackId;
+            return (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => setActiveRackId(r.id)}
+                className={`px-2.5 py-1 text-[10px] font-mono rounded flex items-center gap-1.5 transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-cyan-950/70 border border-cyan-500 text-cyan-300 font-bold shadow-sm'
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 border border-transparent'
+                }`}
+              >
+                <span>{r.name || `Bay ${idx + 1}`}</span>
+                {racks.length > 1 && isActive && (
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeRack(r.id);
+                    }}
+                    className="ml-0.5 text-[9px] text-zinc-500 hover:text-red-400 hover:scale-125"
+                    title="Remove this bay"
+                  >
+                    ✕
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            onClick={() => addRack()}
+            title="Add adjacent bay (+800mm)"
+            className="px-2 py-1 text-[10px] font-mono rounded text-emerald-400 hover:bg-emerald-950/40 border border-emerald-600/40 cursor-pointer transition-all active:scale-95"
+          >
+            + ADD BAY
+          </button>
+        </div>
+
+        {/* Undo / Redo */}
+        <div className="flex items-center gap-1 bg-zinc-900/90 border border-zinc-700 rounded p-1 shadow-md shrink-0">
           <button
             type="button"
             onClick={undo}
@@ -611,6 +682,20 @@ export function ConfiguratorPanel() {
               </span>
             </div>
           </div>
+
+          {racks.length > 1 && (
+            <div className="mt-1 p-2 bg-cyan-950/20 border border-cyan-800/40 rounded text-[8px] font-mono flex flex-col gap-1">
+              <span className="text-cyan-400 font-bold uppercase">[ DATA HALL ROW TOTALS ]</span>
+              <div className="flex justify-between text-zinc-300">
+                <span>ROW BAYS: {racks.length}</span>
+                <span>POWER: {rowPower.toLocaleString()} W</span>
+              </div>
+              <div className="flex justify-between text-zinc-400">
+                <span>UNITS: {rowUsedUnits}U / {rowCapacity}U</span>
+                <span>ASSETS: {rowHardwareCount}</span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Patching & Cabling Control Panel */}

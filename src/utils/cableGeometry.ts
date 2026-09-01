@@ -10,7 +10,7 @@
  */
 
 import * as THREE from 'three';
-import type { HardwareProps } from '../types/rack.types';
+import type { HardwareProps, Vec3 } from '../types/rack.types';
 import {
   CableType,
   CableMediumSpec,
@@ -197,20 +197,21 @@ export function calculateCableCurve(
 }
 
 /**
- * Computes world 3D position of a port within a mounted hardware device.
+ * Computes world 3D position of a port within a mounted hardware device and optional parent rack offset.
  */
 export function getPortWorldPosition(
   device: HardwareProps,
   portId: string,
+  rackOffset: Vec3 = [0, 0, 0],
 ): THREE.Vector3 | null {
   if (!device.ports) return null;
   const port = device.ports.find((p) => p.id === portId);
   if (!port) return null;
 
   return new THREE.Vector3(
-    device.position[0] + port.position[0],
-    device.position[1] + port.position[1],
-    device.position[2] + port.position[2],
+    rackOffset[0] + device.position[0] + port.position[0],
+    rackOffset[1] + device.position[1] + port.position[1],
+    rackOffset[2] + port.position[2],
   );
 }
 

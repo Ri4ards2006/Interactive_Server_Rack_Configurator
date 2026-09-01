@@ -33,14 +33,14 @@ export function CableMesh({ cable }: CableMeshProps) {
   const isBlueprint = useIsBlueprint();
 
   const {
-    installedHardware,
+    racks,
     selectedCableId,
     selectCable,
     selectHardware,
     removeCable,
   } = useConfiguratorStore(
     useShallow((s) => ({
-      installedHardware: s.installedHardware,
+      racks: s.racks,
       selectedCableId: s.selectedCableId,
       selectCable: s.selectCable,
       selectHardware: s.selectHardware,
@@ -48,22 +48,34 @@ export function CableMesh({ cable }: CableMeshProps) {
     })),
   );
 
-  const fromDev = useMemo(
-    () => installedHardware.find((h) => h.id === cable.fromDevice),
-    [installedHardware, cable.fromDevice],
-  );
-  const toDev = useMemo(
-    () => installedHardware.find((h) => h.id === cable.toDevice),
-    [installedHardware, cable.toDevice],
-  );
+  const { fromDev, fromRack, toDev, toRack } = useMemo(() => {
+    let fd: HardwareProps | undefined;
+    let fr: any;
+    let td: HardwareProps | undefined;
+    let tr: any;
+
+    for (const r of racks) {
+      const foundFrom = r.installedHardware.find((h) => h.id === cable.fromDevice);
+      if (foundFrom) {
+        fd = foundFrom;
+        fr = r;
+      }
+      const foundTo = r.installedHardware.find((h) => h.id === cable.toDevice);
+      if (foundTo) {
+        td = foundTo;
+        tr = r;
+      }
+    }
+    return { fromDev: fd, fromRack: fr, toDev: td, toRack: tr };
+  }, [racks, cable.fromDevice, cable.toDevice]);
 
   const p1 = useMemo(
-    () => (fromDev ? getPortWorldPosition(fromDev, cable.fromPort) : null),
-    [fromDev, cable.fromPort],
+    () => (fromDev && fromRack ? getPortWorldPosition(fromDev, cable.fromPort, fromRack.position) : null),
+    [fromDev, fromRack, cable.fromPort],
   );
   const p2 = useMemo(
-    () => (toDev ? getPortWorldPosition(toDev, cable.toPort) : null),
-    [toDev, cable.toPort],
+    () => (toDev && toRack ? getPortWorldPosition(toDev, cable.toPort, toRack.position) : null),
+    [toDev, toRack, cable.toPort],
   );
 
   const spec = useMemo(
