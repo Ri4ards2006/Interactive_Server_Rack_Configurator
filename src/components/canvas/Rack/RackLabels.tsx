@@ -44,9 +44,14 @@ const LABEL_OFFSET_Z = 0.39;
 // distance and still readable when zoomed in.
 const FONT_SIZE = 0.025;
 
-export function RackLabels() {
+export interface RackLabelsProps {
+  capacity?: number;
+}
+
+export function RackLabels(props: RackLabelsProps = {}) {
+  const storeCapacity = useConfiguratorStore((s) => s.capacity);
   const isBlueprint = useIsBlueprint();
-  const capacity = useConfiguratorStore((s) => s.capacity);
+  const capacity = props.capacity ?? storeCapacity;
 
   // Hide entirely in 3D mode — blueprint is where labels earn their
   // keep. They dominate the realistic view and add no value there.
