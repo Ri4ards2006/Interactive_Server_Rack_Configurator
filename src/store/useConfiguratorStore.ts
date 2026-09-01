@@ -21,11 +21,58 @@ import {
   HardwareProps,
 } from '../types/rack.types';
 import { CableType } from '../types/cable.types';
+import type { DeviceNetworkConfig, PortNetworkConfig } from '../types/network.types';
+import type {
+  RoomDimensions,
+  AisleContainmentConfig,
+  CracUnit,
+  DataHallConfig,
+  TileType,
+} from '../types/room.types';
 import {
   VoltageStandard,
   BreakerRating,
   FeedFailoverMode,
 } from '../types/electrical.types';
+
+export type ViewMode = '3D' | 'blueprint' | 'thermal' | 'topology';
+
+export const DEFAULT_DATA_HALL_CONFIG: DataHallConfig = {
+  roomDimensions: {
+    widthMeters: 12,
+    depthMeters: 10,
+    heightMeters: 3.5,
+    raisedFloorHeightMeters: 0.6,
+  },
+  containment: {
+    enabled: true,
+    type: 'cold-aisle',
+    roofHeightMeters: 2.4,
+    doorOpen: false,
+    tintColor: '#38bdf8',
+  },
+  cracUnits: [
+    {
+      id: 'crac-1',
+      name: 'CRAC Unit A (North)',
+      coolingKw: 60,
+      airflowCFM: 9500,
+      position: [-4.5, 0, -3.5],
+      orientation: 0,
+      status: 'online',
+    },
+    {
+      id: 'crac-2',
+      name: 'CRAC Unit B (South)',
+      coolingKw: 60,
+      airflowCFM: 9500,
+      position: [4.5, 0, -3.5],
+      orientation: 0,
+      status: 'online',
+    },
+  ],
+  tilesOverride: {},
+};
 import { hardwareRegistry } from '../utils/hardwareRegistry';
 import { generateDevicePorts } from '../utils/portLayout';
 import {
@@ -110,8 +157,8 @@ export interface ConfiguratorState {
   clearAllCables: () => void;
 
   /** Visual presentation mode */
-  viewMode: '3D' | 'blueprint' | 'thermal';
-  setViewMode: (mode: '3D' | 'blueprint' | 'thermal') => void;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
 
   /** Ambient cold aisle temperature in Celsius */
   ambientTemperatureC: number;
@@ -129,6 +176,23 @@ export interface ConfiguratorState {
   setActiveRackId: (rackId: string) => void;
   setRackName: (rackId: string, name: string) => void;
   importNetBoxRack: (rack: RackInstance, cables?: CableProps[]) => void;
+
+  // -- L2/L3 Network Configurations -------------------------------------
+  updateDeviceNetworkConfig: (hardwareId: string, config: Partial<DeviceNetworkConfig>) => void;
+  updatePortNetworkConfig: (hardwareId: string, portId: string, config: Partial<PortNetworkConfig>) => void;
+
+  // -- Data Hall Room Planning -------------------------------------------
+  isRoomViewEnabled: boolean;
+  dataHallConfig: DataHallConfig;
+  toggleRoomView: () => void;
+  setRoomViewEnabled: (enabled: boolean) => void;
+  setRoomDimensions: (dims: Partial<RoomDimensions>) => void;
+  setContainmentConfig: (config: Partial<AisleContainmentConfig>) => void;
+  addCracUnit: (crac: Omit<CracUnit, 'id'>) => void;
+  removeCracUnit: (id: string) => void;
+  updateCracUnit: (id: string, updates: Partial<CracUnit>) => void;
+  setTileType: (xIdx: number, zIdx: number, type: TileType) => void;
+  updateRackPosition: (rackId: string, position: Vec3) => void;
 
   // -- 3-Phase Electrical Simulation ------------------------------------
   voltageStandard: VoltageStandard;
@@ -202,9 +266,16 @@ const createSnapshot = (state: {
     installedHardware: r.installedHardware.map((h) => ({
       ...h,
       position: [...h.position] as Vec3,
+      networkConfig: h.networkConfig
+        ? {
+            ...h.networkConfig,
+            portsConfig: h.networkConfig.portsConfig ? { ...h.networkConfig.portsConfig } : undefined,
+          }
+        : undefined,
       ports: h.ports?.map((p: PortProps) => ({
         ...p,
         position: [...p.position] as Vec3,
+        networkConfig: p.networkConfig ? { ...p.networkConfig } : undefined,
       })),
     })),
   })),
@@ -430,6 +501,74 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
   ambientTemperatureC: 20.0,
   setAmbientTemperature: (ambientTemperatureC) => set({ ambientTemperatureC }),
   activeDraggingCable: null,
+  isRoomViewEnabled: false,
+  dataHallConfig: DEFAULT_DATA_HALL_CONFIG,
+
+  toggleRoomView: () => set((state) => ({ isRoomViewEnabled: !state.isRoomViewEnabled })),
+  setRoomViewEnabled: (isRoomViewEnabled) => set({ isRoomViewEnabled }),
+  setRoomDimensions: (dims) =>
+    set((state) => ({
+      dataHallConfig: {
+        ...state.dataHallConfig,
+        roomDimensions: {
+          ...state.dataHallConfig.roomDimensions,
+          ...dims,
+        },
+      },
+    })),
+  setContainmentConfig: (containment) =>
+    set((state) => ({
+      dataHallConfig: {
+        ...state.dataHallConfig,
+        containment: {
+          ...state.dataHallConfig.containment,
+          ...containment,
+        },
+      },
+    })),
+  addCracUnit: (crac) =>
+    set((state) => ({
+      dataHallConfig: {
+        ...state.dataHallConfig,
+        cracUnits: [
+          ...state.dataHallConfig.cracUnits,
+          { ...crac, id: generateId() },
+        ],
+      },
+    })),
+  removeCracUnit: (id) =>
+    set((state) => ({
+      dataHallConfig: {
+        ...state.dataHallConfig,
+        cracUnits: state.dataHallConfig.cracUnits.filter((c) => c.id !== id),
+      },
+    })),
+  updateCracUnit: (id, updates) =>
+    set((state) => ({
+      dataHallConfig: {
+        ...state.dataHallConfig,
+        cracUnits: state.dataHallConfig.cracUnits.map((c) =>
+          c.id === id ? { ...c, ...updates } : c,
+        ),
+      },
+    })),
+  setTileType: (xIdx, zIdx, type) =>
+    set((state) => ({
+      dataHallConfig: {
+        ...state.dataHallConfig,
+        tilesOverride: {
+          ...state.dataHallConfig.tilesOverride,
+          [`${xIdx}_${zIdx}`]: type,
+        },
+      },
+    })),
+  updateRackPosition: (rackId, position) =>
+    set((state) => ({
+      racks: state.racks.map((r) =>
+        r.id === rackId ? { ...r, position } : r,
+      ),
+    })),
+
   hddBays: {
     'default-chassis-1': {
       0: { status: 'inserted', isFailed: false },
@@ -1049,15 +1188,86 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
 
   selectHardware: (id) => set({ selectedHardwareId: id }),
 
+  updateDeviceNetworkConfig: (hardwareId, config) =>
+    set((state) => {
+      const history = pushHistory(state);
+      const updatedRacks = state.racks.map((r) => ({
+        ...r,
+        installedHardware: r.installedHardware.map((h) => {
+          if (h.id === hardwareId) {
+            return {
+              ...h,
+              networkConfig: {
+                ...h.networkConfig,
+                ...config,
+                portsConfig: {
+                  ...(h.networkConfig?.portsConfig || {}),
+                  ...(config.portsConfig || {}),
+                },
+              },
+            };
+          }
+          return h;
+        }),
+      }));
+
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
+      return {
+        ...history,
+        racks: updatedRacks,
+        installedHardware: activeRack.installedHardware,
+      };
+    }),
+
+  updatePortNetworkConfig: (hardwareId, portId, config) =>
+    set((state) => {
+      const history = pushHistory(state);
+      const updatedRacks = state.racks.map((r) => ({
+        ...r,
+        installedHardware: r.installedHardware.map((h) => {
+          if (h.id === hardwareId) {
+            const currentPortsConfig = h.networkConfig?.portsConfig || {};
+            const currentPortCfg = currentPortsConfig[portId] || {};
+            const updatedPortCfg: PortNetworkConfig = {
+              ...currentPortCfg,
+              ...config,
+              portId,
+            };
+
+            const updatedPorts = h.ports?.map((p) =>
+              p.id === portId ? { ...p, networkConfig: updatedPortCfg } : p,
+            );
+
+            return {
+              ...h,
+              ports: updatedPorts,
+              networkConfig: {
+                ...h.networkConfig,
+                portsConfig: {
+                  ...currentPortsConfig,
+                  [portId]: updatedPortCfg,
+                },
+              },
+            };
+          }
+          return h;
+        }),
+      }));
+
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
+      return {
+        ...history,
+        racks: updatedRacks,
+        installedHardware: activeRack.installedHardware,
+      };
+    }),
+
   toggleViewMode: () =>
-    set((state) => ({
-      viewMode:
-        state.viewMode === '3D'
-          ? 'blueprint'
-          : state.viewMode === 'blueprint'
-          ? 'thermal'
-          : '3D',
-    })),
+    set((state) => {
+      const modes: ViewMode[] = ['3D', 'blueprint', 'thermal', 'topology'];
+      const nextIdx = (modes.indexOf(state.viewMode) + 1) % modes.length;
+      return { viewMode: modes[nextIdx] };
+    }),
 
   setRackType: (rackType, rackId) =>
     set((state) => {
