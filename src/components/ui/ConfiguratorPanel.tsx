@@ -16,6 +16,11 @@ import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useConfiguratorStore, RACK_UNIT_HEIGHT } from '../../store/useConfiguratorStore';
 import type { HardwareProps, HardwareType } from '../../types/rack.types';
+import {
+  CABLE_COLOR_PRESETS,
+  CABLE_MEDIUM_SPECS,
+  CableType,
+} from '../../types/cable.types';
 import { checkDropValidity } from '../../utils/rackLayout';
 
 interface CatalogItem {
@@ -301,6 +306,19 @@ export function ConfiguratorPanel() {
   const canUndo = useConfiguratorStore((s) => s.canUndo);
   const canRedo = useConfiguratorStore((s) => s.canRedo);
 
+  // Cabling state & actions
+  const cables = useConfiguratorStore(useShallow((s) => s.cables));
+  const activeCableType = useConfiguratorStore((s) => s.activeCableType);
+  const activeCableColor = useConfiguratorStore((s) => s.activeCableColor);
+  const setActiveCableType = useConfiguratorStore((s) => s.setActiveCableType);
+  const setActiveCableColor = useConfiguratorStore((s) => s.setActiveCableColor);
+  const updateCableColor = useConfiguratorStore((s) => s.updateCableColor);
+  const updateCableType = useConfiguratorStore((s) => s.updateCableType);
+  const selectedCableId = useConfiguratorStore((s) => s.selectedCableId);
+  const selectCable = useConfiguratorStore((s) => s.selectCable);
+  const removeCable = useConfiguratorStore((s) => s.removeCable);
+  const clearAllCables = useConfiguratorStore((s) => s.clearAllCables);
+
   // Derived states
   const { usedUnits, totalPowerDraw } = useMemo(() => {
     let used = 0;
@@ -311,6 +329,18 @@ export function ConfiguratorPanel() {
     }
     return { usedUnits: used, totalPowerDraw: power };
   }, [installedHardware]);
+
+  const totalCableDistance = useMemo(() => {
+    return cables.reduce((acc, c) => acc + (c.lengthMeters || 0.4), 0);
+  }, [cables]);
+
+  const bendViolationsCount = useMemo(() => {
+    return cables.filter((c) => c.hasBendViolation).length;
+  }, [cables]);
+
+  const selectedCable = useMemo(() => {
+    return cables.find((c) => c.id === selectedCableId) || null;
+  }, [cables, selectedCableId]);
 
   const utilizationPct = capacity > 0 ? Math.min(100, (usedUnits / capacity) * 100) : 0;
 
@@ -583,6 +613,87 @@ export function ConfiguratorPanel() {
           </div>
         </div>
 
+        {/* Patching & Cabling Control Panel */}
+        <div className="py-4 border-b border-zinc-800/60 flex flex-col gap-3 font-mono">
+          <div className="flex justify-between items-center">
+            <label className="text-[9px] uppercase tracking-wider text-zinc-500">
+              [ PATCHING & CABLING ]
+            </label>
+            {cables.length > 0 && (
+              <button
+                type="button"
+                onClick={clearAllCables}
+                className="text-[8px] text-zinc-600 hover:text-red-400 font-mono uppercase transition-colors cursor-pointer"
+                title="Unpatch all cables"
+              >
+                [ PURGE ALL ]
+              </button>
+            )}
+          </div>
+
+          {/* Medium Selector */}
+          <div className="grid grid-cols-3 gap-1">
+            {(Object.keys(CABLE_MEDIUM_SPECS) as CableType[]).map((key) => {
+              const spec = CABLE_MEDIUM_SPECS[key];
+              const isSelected = activeCableType === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setActiveCableType(key);
+                    setActiveCableColor(spec.defaultColor);
+                  }}
+                  className={`px-1.5 py-1 text-[9px] font-mono rounded border text-center transition-all cursor-pointer ${
+                    isSelected
+                      ? 'border-cyan-500 bg-cyan-950/40 text-cyan-300 font-bold'
+                      : 'border-zinc-800/80 bg-zinc-950/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                  }`}
+                >
+                  {spec.shortLabel}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Color Palette Picker */}
+          <div className="flex items-center gap-1.5 flex-wrap pt-1">
+            <span className="text-[8px] uppercase text-zinc-500 mr-1">COLOR:</span>
+            {CABLE_COLOR_PRESETS.map((preset) => (
+              <button
+                key={preset.hex}
+                type="button"
+                onClick={() => setActiveCableColor(preset.hex)}
+                title={preset.name}
+                className={`w-3.5 h-3.5 rounded-full border transition-transform cursor-pointer ${
+                  activeCableColor === preset.hex
+                    ? 'border-white scale-125 shadow-[0_0_6px_rgba(255,255,255,0.6)]'
+                    : 'border-zinc-700 hover:scale-110'
+                }`}
+                style={{ backgroundColor: preset.hex }}
+              />
+            ))}
+          </div>
+
+          {/* Cabling Telemetry */}
+          <div className="grid grid-cols-3 gap-1.5 pt-1 text-[8px]">
+            <div className="bg-zinc-950/60 border border-zinc-850 rounded p-1.5">
+              <span className="text-zinc-500 block">PATCHED</span>
+              <span className="text-[10px] font-bold text-zinc-200 block mt-0.5">{cables.length} RUNS</span>
+            </div>
+            <div className="bg-zinc-950/60 border border-zinc-850 rounded p-1.5">
+              <span className="text-zinc-500 block">LENGTH</span>
+              <span className="text-[10px] font-bold text-cyan-400 block mt-0.5">{totalCableDistance.toFixed(2)}m</span>
+            </div>
+            <div className="bg-zinc-950/60 border border-zinc-850 rounded p-1.5">
+              <span className="text-zinc-500 block">BEND STATUS</span>
+              <span className={`text-[10px] font-bold block mt-0.5 ${bendViolationsCount > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                {bendViolationsCount > 0 ? `⚠️ ${bendViolationsCount} VIOL.` : 'HEALTHY'}
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Add hardware catalog */}
         <div className="py-4 flex flex-col gap-4">
           {(() => {
@@ -800,6 +911,96 @@ export function ConfiguratorPanel() {
                 className="w-full py-1.5 text-center font-mono text-[9px] border border-zinc-800 hover:border-zinc-650 hover:text-zinc-200 transition-colors uppercase focus:outline-none cursor-pointer rounded"
               >
                 [ DESELECT ASSET ]
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Cable Diagnostics Inspector */}
+        {selectedCable && (
+          <div className="border-t border-zinc-800/60 pt-4 mt-auto flex flex-col gap-3 shrink-0">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+              <div>
+                <span className="text-[8px] font-mono uppercase text-zinc-500 tracking-widest block">
+                  CABLE DIAGNOSTICS
+                </span>
+                <h3 className="text-[10px] font-bold text-zinc-200 capitalize flex items-center gap-1.5 mt-0.5">
+                  <span
+                    className="w-2 h-2 rounded-full inline-block shrink-0"
+                    style={{ backgroundColor: selectedCable.color }}
+                  />
+                  <span>{selectedCable.type || 'copper-cat6'}</span>
+                  <span className="text-[9px] text-cyan-400 font-mono bg-cyan-950/20 px-1 border border-cyan-800/30">
+                    {selectedCable.lengthMeters ? `${selectedCable.lengthMeters}m` : '0.4m'}
+                  </span>
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => removeCable(selectedCable.id)}
+                className="text-[9px] px-2 py-1 bg-red-950/60 border border-red-800 text-red-300 hover:bg-red-900 rounded cursor-pointer transition-all active:scale-95"
+              >
+                UNPATCH
+              </button>
+            </div>
+
+            {/* Type selector for selected cable */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[8px] uppercase text-zinc-500 font-mono">MEDIUM_TYPE</span>
+              <div className="grid grid-cols-3 gap-1">
+                {(Object.keys(CABLE_MEDIUM_SPECS) as CableType[]).map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => updateCableType(selectedCable.id, key)}
+                    className={`px-1 py-0.5 text-[8px] font-mono rounded border transition-all cursor-pointer ${
+                      selectedCable.type === key
+                        ? 'border-cyan-500 bg-cyan-950/40 text-cyan-300 font-bold'
+                        : 'border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    {CABLE_MEDIUM_SPECS[key].shortLabel}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Color picker for selected cable */}
+            <div className="flex flex-col gap-1">
+              <span className="text-[8px] uppercase text-zinc-500 font-mono">JACKET_COLOR</span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {CABLE_COLOR_PRESETS.map((preset) => (
+                  <button
+                    key={preset.hex}
+                    type="button"
+                    onClick={() => updateCableColor(selectedCable.id, preset.hex)}
+                    title={preset.name}
+                    className={`w-3.5 h-3.5 rounded-full border transition-transform cursor-pointer ${
+                      selectedCable.color === preset.hex
+                        ? 'border-white scale-125 shadow-[0_0_6px_rgba(255,255,255,0.6)]'
+                        : 'border-zinc-700 hover:scale-110'
+                    }`}
+                    style={{ backgroundColor: preset.hex }}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Bend status info */}
+            <div className="text-[8px] font-mono p-1.5 bg-zinc-950/60 border border-zinc-850 rounded flex justify-between items-center">
+              <span className="text-zinc-500">BEND RADIUS TOLERANCE:</span>
+              <span className={selectedCable.hasBendViolation ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'}>
+                {selectedCable.hasBendViolation ? '⚠️ VIOLATION (< MIN RADIUS)' : 'COMPLIANT (OK)'}
+              </span>
+            </div>
+
+            <div>
+              <button
+                type="button"
+                onClick={() => selectCable(null)}
+                className="w-full py-1 text-center font-mono text-[9px] border border-zinc-800 hover:border-zinc-650 hover:text-zinc-200 transition-colors uppercase focus:outline-none cursor-pointer rounded"
+              >
+                [ DESELECT CABLE ]
               </button>
             </div>
           </div>

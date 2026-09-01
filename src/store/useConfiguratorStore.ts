@@ -21,8 +21,13 @@ import {
   PortProps,
   HardwareProps,
 } from '../types/rack.types';
+import { CableType } from '../types/cable.types';
 import { hardwareRegistry } from '../utils/hardwareRegistry';
 import { generateDevicePorts } from '../utils/portLayout';
+import {
+  calculateCableCurve,
+  getPortWorldPosition,
+} from '../utils/cableGeometry';
 
 export interface HddBayState {
   status: 'inserted' | 'extracted' | 'removed';
@@ -34,6 +39,7 @@ export interface DraggingCableProps {
   fromDevice: string;
   fromPort: string;
   color: string;
+  type?: CableType;
   startPortGlobalPos: Vec3;
   currentMouseWorldPos: Vec3;
 }
@@ -71,6 +77,18 @@ export interface ConfiguratorState extends RackState {
 
   /** Set / clear active cable selection */
   selectCable: (id: string | null) => void;
+
+  /** Active cable medium for new patch runs */
+  activeCableType: CableType;
+
+  /** Active cable color preset for new patch runs */
+  activeCableColor: string;
+
+  setActiveCableType: (type: CableType) => void;
+  setActiveCableColor: (color: string) => void;
+  updateCableColor: (id: string, color: string) => void;
+  updateCableType: (id: string, type: CableType) => void;
+  clearAllCables: () => void;
 
   /** Visual presentation mode */
   viewMode: '3D' | 'blueprint';
@@ -110,10 +128,23 @@ export interface ConfiguratorState extends RackState {
   toggleViewMode: () => void;
   setRackType: (type: '2-post' | '4-post' | 'cabinet') => void;
   setDoorOpen: (isOpen: boolean) => void;
-  addCable: (fromDevice: string, fromPort: string, toDevice: string, toPort: string, color: string) => void;
+  addCable: (
+    fromDevice: string,
+    fromPort: string,
+    toDevice: string,
+    toPort: string,
+    color?: string,
+    type?: CableType,
+  ) => void;
   removeCable: (id: string) => void;
   unpatchPort: (deviceId: string, portId: string) => void;
-  startDraggingCable: (fromDevice: string, fromPort: string, startPortGlobalPos: Vec3, color?: string) => void;
+  startDraggingCable: (
+    fromDevice: string,
+    fromPort: string,
+    startPortGlobalPos: Vec3,
+    color?: string,
+    type?: CableType,
+  ) => void;
   updateDraggingCable: (currentMouseWorldPos: Vec3) => void;
   stopDraggingCable: () => void;
 }
@@ -215,6 +246,9 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       toDevice: 'default-switch-1',
       toPort: 'port-1',
       color: '#eab308',
+      type: 'copper-cat6',
+      lengthMeters: 0.42,
+      hasBendViolation: false,
     },
     {
       id: 'default-cable-2',
@@ -223,11 +257,66 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       toDevice: 'default-switch-1',
       toPort: 'port-12',
       color: '#3b82f6',
+      type: 'copper-cat6',
+      lengthMeters: 0.38,
+      hasBendViolation: false,
     },
   ],
   selectedHardwareId: null,
   selectedCableId: null,
   selectCable: (id) => set({ selectedCableId: id }),
+
+  activeCableType: 'copper-cat6',
+  activeCableColor: '#3b82f6',
+  setActiveCableType: (activeCableType) => set({ activeCableType }),
+  setActiveCableColor: (activeCableColor) => set({ activeCableColor }),
+
+  updateCableColor: (id, color) =>
+    set((state) => {
+      const history = pushHistory(state);
+      return {
+        ...history,
+        cables: state.cables.map((c) => (c.id === id ? { ...c, color } : c)),
+      };
+    }),
+
+  updateCableType: (id, type) =>
+    set((state) => {
+      const history = pushHistory(state);
+      return {
+        ...history,
+        cables: state.cables.map((c) => {
+          if (c.id !== id) return c;
+          const fromDev = state.installedHardware.find((h) => h.id === c.fromDevice);
+          const toDev = state.installedHardware.find((h) => h.id === c.toDevice);
+          const p1 = fromDev ? getPortWorldPosition(fromDev, c.fromPort) : null;
+          const p2 = toDev ? getPortWorldPosition(toDev, c.toPort) : null;
+          let lengthMeters = c.lengthMeters;
+          let hasBendViolation = c.hasBendViolation;
+          if (p1 && p2) {
+            const res = calculateCableCurve(p1, p2, type);
+            lengthMeters = res.evaluation.lengthMeters;
+            hasBendViolation = res.evaluation.hasBendViolation;
+          }
+          return { ...c, type, lengthMeters, hasBendViolation };
+        }),
+      };
+    }),
+
+  clearAllCables: () =>
+    set((state) => {
+      const history = pushHistory(state);
+      return {
+        ...history,
+        cables: [],
+        selectedCableId: null,
+        installedHardware: state.installedHardware.map((h) => ({
+          ...h,
+          ports: h.ports?.map((p) => ({ ...p, cableId: null })),
+        })),
+      };
+    }),
+
   viewMode: '3D',
   activeDraggingCable: null,
   hddBays: {
@@ -487,10 +576,34 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       };
     }),
 
-  addCable: (fromDevice, fromPort, toDevice, toPort, color) =>
+  addCable: (
+    fromDevice,
+    fromPort,
+    toDevice,
+    toPort,
+    color,
+    type,
+  ) =>
     set((state) => {
       const history = pushHistory(state);
       const cableId = generateId();
+      const finalColor = color || state.activeCableColor;
+      const finalType = type || state.activeCableType;
+
+      const fromDev = state.installedHardware.find((h) => h.id === fromDevice);
+      const toDev = state.installedHardware.find((h) => h.id === toDevice);
+      const p1 = fromDev ? getPortWorldPosition(fromDev, fromPort) : null;
+      const p2 = toDev ? getPortWorldPosition(toDev, toPort) : null;
+
+      let lengthMeters: number | undefined;
+      let hasBendViolation = false;
+
+      if (p1 && p2) {
+        const res = calculateCableCurve(p1, p2, finalType);
+        lengthMeters = res.evaluation.lengthMeters;
+        hasBendViolation = res.evaluation.hasBendViolation;
+      }
+
       return {
         ...history,
         cables: [
@@ -501,7 +614,10 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
             fromPort,
             toDevice,
             toPort,
-            color,
+            color: finalColor,
+            type: finalType,
+            lengthMeters,
+            hasBendViolation,
           },
         ],
         installedHardware: state.installedHardware.map((h) => {
@@ -574,17 +690,24 @@ export const useConfiguratorStore = create<ConfiguratorState>((set) => ({
       };
     }),
 
-  startDraggingCable: (fromDevice, fromPort, startPortGlobalPos, color = '#3b82f6') =>
-    set({
+  startDraggingCable: (
+    fromDevice,
+    fromPort,
+    startPortGlobalPos,
+    color,
+    type,
+  ) =>
+    set((state) => ({
       activeDraggingCable: {
         cableId: null,
         fromDevice,
         fromPort,
-        color,
+        color: color || state.activeCableColor,
+        type: type || state.activeCableType,
         startPortGlobalPos,
         currentMouseWorldPos: startPortGlobalPos,
       },
-    }),
+    })),
 
   updateDraggingCable: (currentMouseWorldPos) =>
     set((state) => {
