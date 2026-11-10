@@ -12,6 +12,12 @@
 
 import { create } from 'zustand';
 import {
+  canPlaceAt,
+  centerYToUStart,
+  findFirstFreeSlot,
+  uStartToCenterY,
+} from '../utils/rackLayout';
+import {
   HardwareType,
   RackFrameType,
   RackInstance,
@@ -244,7 +250,10 @@ export interface ConfiguratorState {
   removeHddFromBay: (deviceId: string, bayIndex: number) => void;
   insertHddIntoBay: (deviceId: string, bayIndex: number) => void;
   simulateHddFailure: () => void;
-  addHardware: (type: HardwareType, rackUnits: number, rackId?: string) => void;
+  /** Mounts a device in the lowest free gap. Returns the new id, or null if it does not fit. */
+  addHardware: (type: HardwareType, rackUnits: number, rackId?: string) => string | null;
+  /** Moves a device by whole U (positive = up). Validated; records undo history. */
+  moveHardwareByUnits: (id: string, deltaU: number) => boolean;
   removeHardware: (id: string) => void;
   updateHardwarePosition: (id: string, position: Vec3, rackId?: string) => void;
   selectHardware: (id: string | null) => void;
@@ -821,17 +830,19 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
   clearHistory: () =>
     set({ past: [], future: [], canUndo: false, canRedo: false }),
 
-  addHardware: (type, rackUnits, rackId) =>
+  addHardware: (type, rackUnits, rackId) => {
+    const pre = get();
+    const preRack =
+      pre.racks.find((r) => r.id === (rackId || pre.activeRackId)) || pre.racks[0];
+    if (!preRack) return null;
+    const freeU = findFirstFreeSlot(rackUnits, preRack.capacity, preRack.installedHardware);
+    if (freeU === null) return null;
+    const newId = generateId();
+
     set((state) => {
       const history = pushHistory(state);
-      const targetRackId = rackId || state.activeRackId;
-      const targetRack = state.racks.find((r) => r.id === targetRackId) || state.racks[0];
-
-      const currentHighestY = targetRack.installedHardware.reduce((acc, h) => {
-        const top = h.position[1] + (h.rackUnits * RACK_UNIT_HEIGHT) / 2;
-        return Math.max(acc, top);
-      }, 0);
-      const centerY = currentHighestY + (rackUnits * RACK_UNIT_HEIGHT) / 2;
+      const targetRackId = preRack.id;
+      const centerY = uStartToCenterY(freeU, rackUnits);
 
       const specs = hardwareRegistry.getDefaultSpecs(type, rackUnits);
 
@@ -847,7 +858,6 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
         }
       }
 
-      const newId = generateId();
       const newChassis: HardwareProps = {
         id: newId,
         type,
@@ -876,7 +886,26 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
           [newId]: bays,
         },
       };
-    }),
+    });
+    return newId;
+  },
+
+  moveHardwareByUnits: (id, deltaU) => {
+    const state = get();
+    if (!Number.isInteger(deltaU) || deltaU === 0) return false;
+    const rack = state.racks.find((r) => r.installedHardware.some((h) => h.id === id));
+    const h = rack?.installedHardware.find((x) => x.id === id);
+    if (!rack || !h) return false;
+    const target = centerYToUStart(h.position[1], h.rackUnits) + deltaU;
+    if (!canPlaceAt(target, h.rackUnits, rack.capacity, rack.installedHardware, id)) return false;
+    state.recordHistorySnapshot();
+    state.updateHardwarePosition(
+      id,
+      [h.position[0], uStartToCenterY(target, h.rackUnits), h.position[2]],
+      rack.id,
+    );
+    return true;
+  },
 
   removeHardware: (id) =>
     set((state) => {

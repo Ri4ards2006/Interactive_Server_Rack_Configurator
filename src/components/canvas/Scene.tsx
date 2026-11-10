@@ -25,6 +25,7 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 
 import { RackFrame } from './Rack/RackFrame';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 import { RackScrews } from './Rack/RackScrews';
 import { RackLabels } from './Rack/RackLabels';
 import { HardwareMapper } from './HardwareMapper';
@@ -207,10 +208,13 @@ export function SceneContents({ orbitRef }: SceneContentsProps) {
 export function Scene() {
   const orbitRef = useRef<OrbitControlsHandle | null>(null);
   const viewMode = useConfiguratorStore((s) => s.viewMode);
+  // Reduced motion: render on demand only (no idle LED blinking / continuous loop).
+  const reducedMotion = usePrefersReducedMotion();
 
   return (
     <div className="w-full h-full relative">
       <Canvas
+        frameloop={reducedMotion ? 'demand' : 'always'}
         shadows
         camera={{ position: [1.5, 1.2, 1.5], fov: 50 }}
         gl={{ antialias: true }}

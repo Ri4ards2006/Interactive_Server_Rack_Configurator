@@ -43,7 +43,7 @@ import {
   MOCK_NETBOX_SITES,
   MOCK_NETBOX_RACKS,
 } from '../../utils/netbox/mockNetboxData';
-import { checkDropValidity } from '../../utils/rackLayout';
+import { canPlaceAt, centerYToUStart } from '../../utils/rackLayout';
 import { calculateTotalCoolingMetrics } from '../../utils/roomLayout';
 import type { TelemetryProvider, ChassisLiveMetrics } from '../../types/telemetry.types';
 import { computeTelemetrySummary } from '../../utils/telemetry/telemetryClient';
@@ -597,38 +597,29 @@ export function ConfiguratorPanel() {
   };
 
   // Stacking shifter controls
-  const canShiftUp = useMemo(() => {
-    if (!selectedHardware) return false;
-    const [x, y, z] = selectedHardware.position;
-    const nextY = y + RACK_UNIT_HEIGHT;
-    return checkDropValidity(
-      selectedHardware.id,
-      nextY,
-      selectedHardware.rackUnits,
-      capacity,
-      installedHardware
-    );
-  }, [selectedHardware, capacity, installedHardware]);
+  const moveHardwareByUnits = useConfiguratorStore((s) => s.moveHardwareByUnits);
 
-  const canShiftDown = useMemo(() => {
-    if (!selectedHardware) return false;
-    const [x, y, z] = selectedHardware.position;
-    const nextY = y - RACK_UNIT_HEIGHT;
-    return checkDropValidity(
-      selectedHardware.id,
-      nextY,
-      selectedHardware.rackUnits,
-      capacity,
-      installedHardware
-    );
-  }, [selectedHardware, capacity, installedHardware]);
+  const selectedUStart = selectedHardware
+    ? centerYToUStart(selectedHardware.position[1], selectedHardware.rackUnits)
+    : 0;
+
+  const canShiftUp = useMemo(
+    () =>
+      !!selectedHardware &&
+      canPlaceAt(selectedUStart + 1, selectedHardware.rackUnits, capacity, installedHardware, selectedHardware.id),
+    [selectedHardware, selectedUStart, capacity, installedHardware],
+  );
+
+  const canShiftDown = useMemo(
+    () =>
+      !!selectedHardware &&
+      canPlaceAt(selectedUStart - 1, selectedHardware.rackUnits, capacity, installedHardware, selectedHardware.id),
+    [selectedHardware, selectedUStart, capacity, installedHardware],
+  );
 
   const shiftHardware = (direction: 'up' | 'down') => {
     if (!selectedHardware) return;
-    const [x, y, z] = selectedHardware.position;
-    const nextY = direction === 'up' ? y + RACK_UNIT_HEIGHT : y - RACK_UNIT_HEIGHT;
-    useConfiguratorStore.getState().recordHistorySnapshot();
-    updateHardwarePosition(selectedHardware.id, [x, nextY, z]);
+    moveHardwareByUnits(selectedHardware.id, direction === 'up' ? 1 : -1);
   };
 
   return (
@@ -1476,7 +1467,7 @@ export function ConfiguratorPanel() {
         </div>
 
         {/* Inventory list */}
-        <div className="py-4 flex flex-col gap-1.5">
+        <div className="py-4 flex flex-col gap-1.5" role="list" aria-label="Installed hardware">
           {installedHardware.length === 0 ? (
             <div className="rounded border border-dashed border-zinc-800 px-3 py-10 text-center font-mono text-[10px] text-zinc-600 flex flex-col justify-center h-48 bg-zinc-950/20 select-none">
               <span>NO MOUNTED CHASSIS</span>
@@ -1490,6 +1481,8 @@ export function ConfiguratorPanel() {
               return (
                 <div
                   key={h.id}
+                  role="listitem"
+                  data-hardware-id={h.id}
                   onClick={() => selectHardware(isItemLocallySelected ? null : h.id)}
                   className={`group flex flex-col p-2.5 rounded border cursor-pointer transition-all relative tech-card-hover ${
                     isItemLocallySelected
@@ -1513,6 +1506,7 @@ export function ConfiguratorPanel() {
                         }}
                         className="text-zinc-650 hover:text-red-400 transition-colors p-0.5 rounded text-[8px] font-mono select-none focus:outline-none cursor-pointer"
                         title="Decommission Asset"
+                        aria-label={`Remove ${h.type} at ${getSlotRange(h)}`}
                       >
                         [X]
                       </button>
