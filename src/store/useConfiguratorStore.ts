@@ -12,6 +12,12 @@
 
 import { create } from 'zustand';
 import {
+  canPlaceAt,
+  centerYToUStart,
+  findFirstFreeSlot,
+  uStartToCenterY,
+} from '../utils/rackLayout';
+import {
   HardwareType,
   RackFrameType,
   RackInstance,
@@ -21,11 +27,75 @@ import {
   HardwareProps,
 } from '../types/rack.types';
 import { CableType } from '../types/cable.types';
+import type { DeviceNetworkConfig, PortNetworkConfig } from '../types/network.types';
+import type {
+  RoomDimensions,
+  AisleContainmentConfig,
+  CracUnit,
+  DataHallConfig,
+  TileType,
+} from '../types/room.types';
+import type {
+  TelemetryConfig,
+  ChassisLiveMetrics,
+} from '../types/telemetry.types';
 import {
   VoltageStandard,
   BreakerRating,
   FeedFailoverMode,
 } from '../types/electrical.types';
+
+export type ViewMode = '3D' | 'blueprint' | 'thermal' | 'topology';
+
+export const DEFAULT_TELEMETRY_CONFIG: TelemetryConfig = {
+  provider: 'mock-stream',
+  endpointUrl: 'http://localhost:9090',
+  pollingIntervalMs: 2000,
+  queryMap: {
+    tempQuery: 'node_hwmon_temp_celsius',
+    powerQuery: 'node_power_watts',
+    fanQuery: 'node_fan_speed_rpm',
+    networkRxQuery: 'rate(node_network_receive_bytes_total[1m]) * 8 / 1000000',
+    networkTxQuery: 'rate(node_network_transmit_bytes_total[1m]) * 8 / 1000000',
+  },
+};
+
+export const DEFAULT_DATA_HALL_CONFIG: DataHallConfig = {
+  roomDimensions: {
+    widthMeters: 12,
+    depthMeters: 10,
+    heightMeters: 3.5,
+    raisedFloorHeightMeters: 0.6,
+  },
+  containment: {
+    enabled: true,
+    type: 'cold-aisle',
+    roofHeightMeters: 2.4,
+    doorOpen: false,
+    tintColor: '#38bdf8',
+  },
+  cracUnits: [
+    {
+      id: 'crac-1',
+      name: 'CRAC Unit A (North)',
+      coolingKw: 60,
+      airflowCFM: 9500,
+      position: [-4.5, 0, -3.5],
+      orientation: 0,
+      status: 'online',
+    },
+    {
+      id: 'crac-2',
+      name: 'CRAC Unit B (South)',
+      coolingKw: 60,
+      airflowCFM: 9500,
+      position: [4.5, 0, -3.5],
+      orientation: 0,
+      status: 'online',
+    },
+  ],
+  tilesOverride: {},
+};
 import { hardwareRegistry } from '../utils/hardwareRegistry';
 import { generateDevicePorts } from '../utils/portLayout';
 import {
@@ -110,8 +180,8 @@ export interface ConfiguratorState {
   clearAllCables: () => void;
 
   /** Visual presentation mode */
-  viewMode: '3D' | 'blueprint' | 'thermal';
-  setViewMode: (mode: '3D' | 'blueprint' | 'thermal') => void;
+  viewMode: ViewMode;
+  setViewMode: (mode: ViewMode) => void;
 
   /** Ambient cold aisle temperature in Celsius */
   ambientTemperatureC: number;
@@ -129,6 +199,32 @@ export interface ConfiguratorState {
   setActiveRackId: (rackId: string) => void;
   setRackName: (rackId: string, name: string) => void;
   importNetBoxRack: (rack: RackInstance, cables?: CableProps[]) => void;
+
+  // -- L2/L3 Network Configurations -------------------------------------
+  updateDeviceNetworkConfig: (hardwareId: string, config: Partial<DeviceNetworkConfig>) => void;
+  updatePortNetworkConfig: (hardwareId: string, portId: string, config: Partial<PortNetworkConfig>) => void;
+
+  // -- Data Hall Room Planning -------------------------------------------
+  isRoomViewEnabled: boolean;
+  dataHallConfig: DataHallConfig;
+  toggleRoomView: () => void;
+  setRoomViewEnabled: (enabled: boolean) => void;
+  setRoomDimensions: (dims: Partial<RoomDimensions>) => void;
+  setContainmentConfig: (config: Partial<AisleContainmentConfig>) => void;
+  addCracUnit: (crac: Omit<CracUnit, 'id'>) => void;
+  removeCracUnit: (id: string) => void;
+  updateCracUnit: (id: string, updates: Partial<CracUnit>) => void;
+  setTileType: (xIdx: number, zIdx: number, type: TileType) => void;
+  updateRackPosition: (rackId: string, position: Vec3) => void;
+
+  // -- Live Prometheus / Zabbix Telemetry Engine ------------------------
+  isLiveTelemetryActive: boolean;
+  telemetryConfig: TelemetryConfig;
+  liveMetrics: Record<string, ChassisLiveMetrics>;
+  setLiveTelemetryActive: (active: boolean) => void;
+  toggleLiveTelemetry: () => void;
+  setTelemetryConfig: (config: Partial<TelemetryConfig>) => void;
+  updateLiveMetrics: (metrics: Record<string, ChassisLiveMetrics>) => void;
 
   // -- 3-Phase Electrical Simulation ------------------------------------
   voltageStandard: VoltageStandard;
@@ -154,7 +250,10 @@ export interface ConfiguratorState {
   removeHddFromBay: (deviceId: string, bayIndex: number) => void;
   insertHddIntoBay: (deviceId: string, bayIndex: number) => void;
   simulateHddFailure: () => void;
-  addHardware: (type: HardwareType, rackUnits: number, rackId?: string) => void;
+  /** Mounts a device in the lowest free gap. Returns the new id, or null if it does not fit. */
+  addHardware: (type: HardwareType, rackUnits: number, rackId?: string) => string | null;
+  /** Moves a device by whole U (positive = up). Validated; records undo history. */
+  moveHardwareByUnits: (id: string, deltaU: number) => boolean;
   removeHardware: (id: string) => void;
   updateHardwarePosition: (id: string, position: Vec3, rackId?: string) => void;
   selectHardware: (id: string | null) => void;
@@ -202,9 +301,16 @@ const createSnapshot = (state: {
     installedHardware: r.installedHardware.map((h) => ({
       ...h,
       position: [...h.position] as Vec3,
+      networkConfig: h.networkConfig
+        ? {
+            ...h.networkConfig,
+            portsConfig: h.networkConfig.portsConfig ? { ...h.networkConfig.portsConfig } : undefined,
+          }
+        : undefined,
       ports: h.ports?.map((p: PortProps) => ({
         ...p,
         position: [...p.position] as Vec3,
+        networkConfig: p.networkConfig ? { ...p.networkConfig } : undefined,
       })),
     })),
   })),
@@ -430,6 +536,94 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
   ambientTemperatureC: 20.0,
   setAmbientTemperature: (ambientTemperatureC) => set({ ambientTemperatureC }),
   activeDraggingCable: null,
+  isRoomViewEnabled: false,
+  dataHallConfig: DEFAULT_DATA_HALL_CONFIG,
+
+  toggleRoomView: () => set((state) => ({ isRoomViewEnabled: !state.isRoomViewEnabled })),
+  setRoomViewEnabled: (isRoomViewEnabled) => set({ isRoomViewEnabled }),
+  setRoomDimensions: (dims) =>
+    set((state) => ({
+      dataHallConfig: {
+        ...state.dataHallConfig,
+        roomDimensions: {
+          ...state.dataHallConfig.roomDimensions,
+          ...dims,
+        },
+      },
+    })),
+  setContainmentConfig: (containment) =>
+    set((state) => ({
+      dataHallConfig: {
+        ...state.dataHallConfig,
+        containment: {
+          ...state.dataHallConfig.containment,
+          ...containment,
+        },
+      },
+    })),
+  addCracUnit: (crac) =>
+    set((state) => ({
+      dataHallConfig: {
+        ...state.dataHallConfig,
+        cracUnits: [
+          ...state.dataHallConfig.cracUnits,
+          { ...crac, id: generateId() },
+        ],
+      },
+    })),
+  removeCracUnit: (id) =>
+    set((state) => ({
+      dataHallConfig: {
+        ...state.dataHallConfig,
+        cracUnits: state.dataHallConfig.cracUnits.filter((c) => c.id !== id),
+      },
+    })),
+  updateCracUnit: (id, updates) =>
+    set((state) => ({
+      dataHallConfig: {
+        ...state.dataHallConfig,
+        cracUnits: state.dataHallConfig.cracUnits.map((c) =>
+          c.id === id ? { ...c, ...updates } : c,
+        ),
+      },
+    })),
+  setTileType: (xIdx, zIdx, type) =>
+    set((state) => ({
+      dataHallConfig: {
+        ...state.dataHallConfig,
+        tilesOverride: {
+          ...state.dataHallConfig.tilesOverride,
+          [`${xIdx}_${zIdx}`]: type,
+        },
+      },
+    })),
+  updateRackPosition: (rackId, position) =>
+    set((state) => ({
+      racks: state.racks.map((r) =>
+        r.id === rackId ? { ...r, position } : r,
+      ),
+    })),
+
+  // -- Live Prometheus / Zabbix Telemetry --------------------------------
+  isLiveTelemetryActive: false,
+  telemetryConfig: DEFAULT_TELEMETRY_CONFIG,
+  liveMetrics: {},
+
+  setLiveTelemetryActive: (isLiveTelemetryActive) => set({ isLiveTelemetryActive }),
+  toggleLiveTelemetry: () => set((state) => ({ isLiveTelemetryActive: !state.isLiveTelemetryActive })),
+  setTelemetryConfig: (config) =>
+    set((state) => ({
+      telemetryConfig: {
+        ...state.telemetryConfig,
+        ...config,
+        queryMap: {
+          ...state.telemetryConfig.queryMap,
+          ...(config.queryMap || {}),
+        },
+      },
+    })),
+  updateLiveMetrics: (liveMetrics) => set({ liveMetrics }),
+
   hddBays: {
     'default-chassis-1': {
       0: { status: 'inserted', isFailed: false },
@@ -636,17 +830,19 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
   clearHistory: () =>
     set({ past: [], future: [], canUndo: false, canRedo: false }),
 
-  addHardware: (type, rackUnits, rackId) =>
+  addHardware: (type, rackUnits, rackId) => {
+    const pre = get();
+    const preRack =
+      pre.racks.find((r) => r.id === (rackId || pre.activeRackId)) || pre.racks[0];
+    if (!preRack) return null;
+    const freeU = findFirstFreeSlot(rackUnits, preRack.capacity, preRack.installedHardware);
+    if (freeU === null) return null;
+    const newId = generateId();
+
     set((state) => {
       const history = pushHistory(state);
-      const targetRackId = rackId || state.activeRackId;
-      const targetRack = state.racks.find((r) => r.id === targetRackId) || state.racks[0];
-
-      const currentHighestY = targetRack.installedHardware.reduce((acc, h) => {
-        const top = h.position[1] + (h.rackUnits * RACK_UNIT_HEIGHT) / 2;
-        return Math.max(acc, top);
-      }, 0);
-      const centerY = currentHighestY + (rackUnits * RACK_UNIT_HEIGHT) / 2;
+      const targetRackId = preRack.id;
+      const centerY = uStartToCenterY(freeU, rackUnits);
 
       const specs = hardwareRegistry.getDefaultSpecs(type, rackUnits);
 
@@ -662,7 +858,6 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
         }
       }
 
-      const newId = generateId();
       const newChassis: HardwareProps = {
         id: newId,
         type,
@@ -691,7 +886,26 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
           [newId]: bays,
         },
       };
-    }),
+    });
+    return newId;
+  },
+
+  moveHardwareByUnits: (id, deltaU) => {
+    const state = get();
+    if (!Number.isInteger(deltaU) || deltaU === 0) return false;
+    const rack = state.racks.find((r) => r.installedHardware.some((h) => h.id === id));
+    const h = rack?.installedHardware.find((x) => x.id === id);
+    if (!rack || !h) return false;
+    const target = centerYToUStart(h.position[1], h.rackUnits) + deltaU;
+    if (!canPlaceAt(target, h.rackUnits, rack.capacity, rack.installedHardware, id)) return false;
+    state.recordHistorySnapshot();
+    state.updateHardwarePosition(
+      id,
+      [h.position[0], uStartToCenterY(target, h.rackUnits), h.position[2]],
+      rack.id,
+    );
+    return true;
+  },
 
   removeHardware: (id) =>
     set((state) => {
@@ -1049,15 +1263,86 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => ({
 
   selectHardware: (id) => set({ selectedHardwareId: id }),
 
+  updateDeviceNetworkConfig: (hardwareId, config) =>
+    set((state) => {
+      const history = pushHistory(state);
+      const updatedRacks = state.racks.map((r) => ({
+        ...r,
+        installedHardware: r.installedHardware.map((h) => {
+          if (h.id === hardwareId) {
+            return {
+              ...h,
+              networkConfig: {
+                ...h.networkConfig,
+                ...config,
+                portsConfig: {
+                  ...(h.networkConfig?.portsConfig || {}),
+                  ...(config.portsConfig || {}),
+                },
+              },
+            };
+          }
+          return h;
+        }),
+      }));
+
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
+      return {
+        ...history,
+        racks: updatedRacks,
+        installedHardware: activeRack.installedHardware,
+      };
+    }),
+
+  updatePortNetworkConfig: (hardwareId, portId, config) =>
+    set((state) => {
+      const history = pushHistory(state);
+      const updatedRacks = state.racks.map((r) => ({
+        ...r,
+        installedHardware: r.installedHardware.map((h) => {
+          if (h.id === hardwareId) {
+            const currentPortsConfig = h.networkConfig?.portsConfig || {};
+            const currentPortCfg = currentPortsConfig[portId] || {};
+            const updatedPortCfg: PortNetworkConfig = {
+              ...currentPortCfg,
+              ...config,
+              portId,
+            };
+
+            const updatedPorts = h.ports?.map((p) =>
+              p.id === portId ? { ...p, networkConfig: updatedPortCfg } : p,
+            );
+
+            return {
+              ...h,
+              ports: updatedPorts,
+              networkConfig: {
+                ...h.networkConfig,
+                portsConfig: {
+                  ...currentPortsConfig,
+                  [portId]: updatedPortCfg,
+                },
+              },
+            };
+          }
+          return h;
+        }),
+      }));
+
+      const activeRack = updatedRacks.find((r) => r.id === state.activeRackId)!;
+      return {
+        ...history,
+        racks: updatedRacks,
+        installedHardware: activeRack.installedHardware,
+      };
+    }),
+
   toggleViewMode: () =>
-    set((state) => ({
-      viewMode:
-        state.viewMode === '3D'
-          ? 'blueprint'
-          : state.viewMode === 'blueprint'
-          ? 'thermal'
-          : '3D',
-    })),
+    set((state) => {
+      const modes: ViewMode[] = ['3D', 'blueprint', 'thermal', 'topology'];
+      const nextIdx = (modes.indexOf(state.viewMode) + 1) % modes.length;
+      return { viewMode: modes[nextIdx] };
+    }),
 
   setRackType: (rackType, rackId) =>
     set((state) => {

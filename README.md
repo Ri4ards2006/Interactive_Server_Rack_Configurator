@@ -33,9 +33,12 @@ The whole application runs client-side in your browser, with an optional zero-de
 
 | Feature | Description |
 |---|---|
-| 🌀 **Tri-Mode Rendering** | Seamlessly toggle between photoreal **`3D PBR`** (HDR reflections, contact shadows), CAD **`BLUEPRINT`** (flat fills, cyan-300 wireframes, U1..U42 rail labels), and **`THERMAL HEATMAP`** (ASHRAE inlet/exhaust faceplates & plume volumes). |
+| 🌐 **Quad-Mode Rendering** | Seamlessly toggle between photoreal **`3D PBR`** (HDR reflections, contact shadows), CAD **`BLUEPRINT`** (flat fills, cyan-300 wireframes, U1..U42 rail labels), **`THERMAL HEATMAP`** (ASHRAE inlet/exhaust faceplates & plume volumes), and **`2D NETWORK TOPOLOGY`** (Spine/Leaf/Compute graph map with VLAN and IP tagging). |
+| 📡 **Live Prometheus/Zabbix Telemetry** | Real-time sensor stream polling (`/api/v1/query`), physics-driven mock generator, dynamic 3D thermal heatmap adaptation, and live CPU temp / fan RPM / power / network I/O dashboard. |
+| 🏢 **Data Hall Room Planning** | 600×600mm raised floor tile grid with automatic perforated airflow tiles, cold-aisle containment canopies with sliding end-doors, and perimeter CRAC/CRAH cooling units with IT heat load balance. |
 | 🧲 **Multi-Rack Baying** | Side-by-side multi-cabinet layouts (`Rack A`, `Rack B`, ...). Seamlessly add, rename, switch active bays, and route inter-rack patch cabling across bay boundaries ($X = \text{bayIndex} \times 0.65\,\text{m}$). |
-| 🔌 **3D Cable Routing & Physics** | Interactive port-to-port patching (`Cat6`, `Cat6A`, `OM4 Multimode Fiber`, `OS2 Single-mode Fiber`, `10G DAC`). Simulates gravitational sag ($Y$-catenary curves) and detects bend radius violations against physical manufacturer tolerances. |
+| 🔌 **3D Cable Routing & Physics** | Interactive port-to-port patching (`Cat6`, `Cat6A`, `OM4 Multimode Fiber`, `OS2 Single-mode Fiber`, `10G DAC`). Rigid 60mm forward strain-relief clearance, gravitational catenary sag curves, and real-time bend radius violation checks against physical manufacturer tolerances. |
+| 💻 **L2 / L3 Network Layer & DCIM** | Comprehensive device network configuration: Hostnames, Management IPv4/IPv6 & Subnet CIDRs, Default Gateways, Link Speeds (`1G` to `100G`), Port Admin States (`UP`/`DOWN`), and IEEE 802.1Q Access / Trunk VLAN tagging. |
 | ⚡ **3-Phase Electrical PDU Simulation** | Live RMS phase current balance ($I = \frac{P}{V \cdot \cos\varphi}$), IEEE/ANSI phase imbalance percentage, NEC 80% continuous safety thresholds, and A/B dual-corded outage failover testing across EU (230V/400V) and US (120V/208V) standards. |
 | 🌡️ **ASHRAE Thermal & Airflow Engine** | Computes chassis temperature rise ($\Delta T = \frac{1.76 \times P}{\text{CFM}}$), total airflow requirements, and penalizes server inlet temps when open, unblanked U-slots create hot-air recirculation loops. Adjustable cold-aisle intake slider ($15^\circ\text{C}-32^\circ\text{C}$). |
 | 💾 **Multi-Format Datacenter Exporters** | One-click downloads for structured datacenter **BOM JSON**, RFC-4180 **BOM CSV**, full 3D scene **Binary GLTF (.GLB)**, and publication-ready 2D vector **Rack Elevation SVG**. |
@@ -54,7 +57,7 @@ The whole application runs client-side in your browser, with an optional zero-de
 | **Build & Styling** | Vite 8 · Tailwind CSS v4 | Lightning-fast esbuild pipeline with zero-runtime utility styling. |
 | **3D Rendering** | Three.js · `@react-three/fiber` v9 · `@react-three/drei` v10 | WebGL scene graph with custom PBR materials, procedural cables, and HDR environment maps. |
 | **State Architecture** | Zustand v5 | Split state: **persistent** `useConfiguratorStore` for rack topologies and **transient** `useDragStore` for 60 Hz cursor drag snapping. |
-| **Testing** | Vitest 2.1 | 296 unit tests covering layout invariants, electrical calculations, thermal physics, and linter rules. |
+| **Testing** | Vitest 2.1 | 310 unit tests covering layout invariants, electrical calculations, thermal physics, telemetry, and linter rules. |
 | **CI Automation** | Node.js CLI & GitHub Actions | Headless compliance verification without WebGL or browser DOM dependencies. |
 
 ---

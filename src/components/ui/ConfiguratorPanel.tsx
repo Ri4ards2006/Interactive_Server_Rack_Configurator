@@ -12,7 +12,7 @@
  * - Zen Mode: toggles sidebar visibility with transition-all duration-300.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useConfiguratorStore, RACK_UNIT_HEIGHT } from '../../store/useConfiguratorStore';
 import type { HardwareProps, HardwareType } from '../../types/rack.types';
@@ -38,11 +38,16 @@ import {
 import { exportRackElevationSVG } from '../../utils/exporters/elevationExporter';
 import { NetBoxClient } from '../../utils/netbox/netboxClient';
 import type { NetBoxSite, NetBoxRack } from '../../types/netbox.types';
+import type { LinkSpeed, VlanMode, PortAdminStatus } from '../../types/network.types';
 import {
   MOCK_NETBOX_SITES,
   MOCK_NETBOX_RACKS,
 } from '../../utils/netbox/mockNetboxData';
-import { checkDropValidity } from '../../utils/rackLayout';
+import { canPlaceAt, centerYToUStart } from '../../utils/rackLayout';
+import { calculateTotalCoolingMetrics } from '../../utils/roomLayout';
+import type { TelemetryProvider, ChassisLiveMetrics } from '../../types/telemetry.types';
+import { computeTelemetrySummary } from '../../utils/telemetry/telemetryClient';
+import { generateLiveTelemetrySnapshot } from '../../utils/telemetry/mockTelemetryStream';
 
 interface CatalogItem {
   type: HardwareType;
@@ -329,10 +334,13 @@ export function ConfiguratorPanel() {
   const addHardware = useConfiguratorStore((s) => s.addHardware);
   const removeHardware = useConfiguratorStore((s) => s.removeHardware);
   const viewMode = useConfiguratorStore((s) => s.viewMode);
+  const setViewMode = useConfiguratorStore((s) => s.setViewMode);
   const toggleViewMode = useConfiguratorStore((s) => s.toggleViewMode);
   const selectedHardwareId = useConfiguratorStore((s) => s.selectedHardwareId);
   const selectHardware = useConfiguratorStore((s) => s.selectHardware);
   const updateHardwarePosition = useConfiguratorStore((s) => s.updateHardwarePosition);
+  const updateDeviceNetworkConfig = useConfiguratorStore((s) => s.updateDeviceNetworkConfig);
+  const updatePortNetworkConfig = useConfiguratorStore((s) => s.updatePortNetworkConfig);
   const rackType = useConfiguratorStore((s) => s.rackType);
   const isDoorOpen = useConfiguratorStore((s) => s.isDoorOpen);
   const setRackType = useConfiguratorStore((s) => s.setRackType);
@@ -372,9 +380,58 @@ export function ConfiguratorPanel() {
   const setFeedFailoverMode = useConfiguratorStore((s) => s.setFeedFailoverMode);
 
   // Thermal Simulation State
-  const setViewMode = useConfiguratorStore((s) => s.setViewMode);
   const ambientTemperatureC = useConfiguratorStore((s) => s.ambientTemperatureC);
   const setAmbientTemperature = useConfiguratorStore((s) => s.setAmbientTemperature);
+
+  // Data Hall Room Planning State
+  const isRoomViewEnabled = useConfiguratorStore((s) => s.isRoomViewEnabled);
+  const dataHallConfig = useConfiguratorStore((s) => s.dataHallConfig);
+  const toggleRoomView = useConfiguratorStore((s) => s.toggleRoomView);
+  const setRoomDimensions = useConfiguratorStore((s) => s.setRoomDimensions);
+  const setContainmentConfig = useConfiguratorStore((s) => s.setContainmentConfig);
+  const addCracUnit = useConfiguratorStore((s) => s.addCracUnit);
+  const removeCracUnit = useConfiguratorStore((s) => s.removeCracUnit);
+
+  // Room Cooling vs IT Load Report
+  const roomCoolingReport = useMemo(() => {
+    return calculateTotalCoolingMetrics(racks, dataHallConfig.cracUnits);
+  }, [racks, dataHallConfig.cracUnits]);
+
+  // Live Telemetry Engine State
+  const isLiveTelemetryActive = useConfiguratorStore((s) => s.isLiveTelemetryActive);
+  const telemetryConfig = useConfiguratorStore((s) => s.telemetryConfig);
+  const liveMetrics = useConfiguratorStore((s) => s.liveMetrics);
+  const setLiveTelemetryActive = useConfiguratorStore((s) => s.setLiveTelemetryActive);
+  const toggleLiveTelemetry = useConfiguratorStore((s) => s.toggleLiveTelemetry);
+  const setTelemetryConfig = useConfiguratorStore((s) => s.setTelemetryConfig);
+  const updateLiveMetrics = useConfiguratorStore((s) => s.updateLiveMetrics);
+
+  const [isTelemetryModalOpen, setIsTelemetryModalOpen] = useState(false);
+
+  // Live Telemetry Poller Loop
+  useEffect(() => {
+    if (!isLiveTelemetryActive) return;
+
+    let tick = 0;
+    // Immediate initial snapshot
+    if (telemetryConfig.provider === 'mock-stream') {
+      updateLiveMetrics(generateLiveTelemetrySnapshot(racks, ambientTemperatureC, tick));
+    }
+
+    const interval = setInterval(() => {
+      tick++;
+      if (telemetryConfig.provider === 'mock-stream') {
+        const snapshot = generateLiveTelemetrySnapshot(racks, ambientTemperatureC, tick);
+        updateLiveMetrics(snapshot);
+      }
+    }, telemetryConfig.pollingIntervalMs || 2000);
+
+    return () => clearInterval(interval);
+  }, [isLiveTelemetryActive, telemetryConfig, racks, ambientTemperatureC, updateLiveMetrics]);
+
+  const telemetrySummary = useMemo(() => {
+    return computeTelemetrySummary(liveMetrics);
+  }, [liveMetrics]);
 
   // Derived states
   const { usedUnits, totalPowerDraw } = useMemo(() => {
@@ -540,38 +597,29 @@ export function ConfiguratorPanel() {
   };
 
   // Stacking shifter controls
-  const canShiftUp = useMemo(() => {
-    if (!selectedHardware) return false;
-    const [x, y, z] = selectedHardware.position;
-    const nextY = y + RACK_UNIT_HEIGHT;
-    return checkDropValidity(
-      selectedHardware.id,
-      nextY,
-      selectedHardware.rackUnits,
-      capacity,
-      installedHardware
-    );
-  }, [selectedHardware, capacity, installedHardware]);
+  const moveHardwareByUnits = useConfiguratorStore((s) => s.moveHardwareByUnits);
 
-  const canShiftDown = useMemo(() => {
-    if (!selectedHardware) return false;
-    const [x, y, z] = selectedHardware.position;
-    const nextY = y - RACK_UNIT_HEIGHT;
-    return checkDropValidity(
-      selectedHardware.id,
-      nextY,
-      selectedHardware.rackUnits,
-      capacity,
-      installedHardware
-    );
-  }, [selectedHardware, capacity, installedHardware]);
+  const selectedUStart = selectedHardware
+    ? centerYToUStart(selectedHardware.position[1], selectedHardware.rackUnits)
+    : 0;
+
+  const canShiftUp = useMemo(
+    () =>
+      !!selectedHardware &&
+      canPlaceAt(selectedUStart + 1, selectedHardware.rackUnits, capacity, installedHardware, selectedHardware.id),
+    [selectedHardware, selectedUStart, capacity, installedHardware],
+  );
+
+  const canShiftDown = useMemo(
+    () =>
+      !!selectedHardware &&
+      canPlaceAt(selectedUStart - 1, selectedHardware.rackUnits, capacity, installedHardware, selectedHardware.id),
+    [selectedHardware, selectedUStart, capacity, installedHardware],
+  );
 
   const shiftHardware = (direction: 'up' | 'down') => {
     if (!selectedHardware) return;
-    const [x, y, z] = selectedHardware.position;
-    const nextY = direction === 'up' ? y + RACK_UNIT_HEIGHT : y - RACK_UNIT_HEIGHT;
-    useConfiguratorStore.getState().recordHistorySnapshot();
-    updateHardwarePosition(selectedHardware.id, [x, nextY, z]);
+    moveHardwareByUnits(selectedHardware.id, direction === 'up' ? 1 : -1);
   };
 
   return (
@@ -587,6 +635,35 @@ export function ConfiguratorPanel() {
           className="px-3.5 py-1.5 border border-zinc-700 bg-zinc-900/90 hover:bg-zinc-800 text-[11px] font-mono tracking-widest text-cyan-400 uppercase rounded cursor-pointer transition-all shadow-md active:scale-95 shrink-0"
         >
           {isZen ? '[ SHOW PANEL ]' : '[ TOGGLE PANEL ]'}
+        </button>
+
+        {/* Data Hall Room Toggle Button */}
+        <button
+          type="button"
+          onClick={toggleRoomView}
+          className={`px-3 py-1.5 text-[10px] font-mono tracking-wider rounded border transition-all cursor-pointer shadow-md active:scale-95 shrink-0 ${
+            isRoomViewEnabled
+              ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 font-bold'
+              : 'bg-zinc-900/90 border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+          }`}
+          title="Toggle Data Hall 3D Room Planning Environment"
+        >
+          {isRoomViewEnabled ? '🏢 DATA HALL [ON]' : '🏢 DATA HALL [OFF]'}
+        </button>
+
+        {/* Live Telemetry Modal & Stream Button */}
+        <button
+          type="button"
+          onClick={() => setIsTelemetryModalOpen(true)}
+          className={`px-3 py-1.5 text-[10px] font-mono tracking-wider rounded border transition-all cursor-pointer shadow-md active:scale-95 shrink-0 flex items-center gap-1.5 ${
+            isLiveTelemetryActive
+              ? 'bg-rose-950/80 border-rose-500 text-rose-300 font-bold shadow-[0_0_10px_rgba(244,63,94,0.3)]'
+              : 'bg-zinc-900/90 border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'
+          }`}
+          title="Open Live Prometheus / Sensor Telemetry Dashboard"
+        >
+          <span className={`w-2 h-2 rounded-full ${isLiveTelemetryActive ? 'bg-rose-500 animate-ping' : 'bg-zinc-600'}`} />
+          <span>{isLiveTelemetryActive ? '📡 LIVE STREAM' : '📡 TELEMETRY'}</span>
         </button>
 
         {/* Rack Bay Switcher Tabs */}
@@ -738,11 +815,11 @@ export function ConfiguratorPanel() {
           <label className="text-[9px] uppercase tracking-wider text-zinc-500">
             [ VIEWPORT_SETTING ]
           </label>
-          <div className="grid grid-cols-3 p-0.5 bg-zinc-950 rounded border border-zinc-800/60">
+          <div className="grid grid-cols-4 p-0.5 bg-zinc-950 rounded border border-zinc-800/60 text-[9px]">
             <button
               type="button"
               onClick={() => setViewMode('3D')}
-              className={`py-1 text-center text-[10px] font-mono rounded transition-all focus:outline-none cursor-pointer ${
+              className={`py-1 text-center font-mono rounded transition-all focus:outline-none cursor-pointer ${
                 viewMode === '3D'
                   ? 'bg-zinc-850 text-zinc-100 border border-zinc-700/50 shadow-sm font-bold'
                   : 'text-zinc-500 hover:text-zinc-300'
@@ -753,24 +830,35 @@ export function ConfiguratorPanel() {
             <button
               type="button"
               onClick={() => setViewMode('blueprint')}
-              className={`py-1 text-center text-[10px] font-mono rounded transition-all focus:outline-none cursor-pointer ${
+              className={`py-1 text-center font-mono rounded transition-all focus:outline-none cursor-pointer ${
                 viewMode === 'blueprint'
                   ? 'bg-cyan-950/40 text-cyan-400 border border-cyan-800/40 shadow-sm font-bold'
                   : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              BLUEPRINT
+              SCHEM
             </button>
             <button
               type="button"
               onClick={() => setViewMode('thermal')}
-              className={`py-1 text-center text-[10px] font-mono rounded transition-all focus:outline-none cursor-pointer ${
+              className={`py-1 text-center font-mono rounded transition-all focus:outline-none cursor-pointer ${
                 viewMode === 'thermal'
-                  ? 'bg-red-950/50 text-red-300 border border-red-800/60 shadow-sm font-bold animate-pulse'
+                  ? 'bg-red-950/50 text-red-300 border border-red-800/60 shadow-sm font-bold'
                   : 'text-zinc-500 hover:text-zinc-300'
               }`}
             >
-              THERMAL
+              HEAT
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('topology')}
+              className={`py-1 text-center font-mono rounded transition-all focus:outline-none cursor-pointer ${
+                viewMode === 'topology'
+                  ? 'bg-emerald-950/50 text-emerald-300 border border-emerald-800/60 shadow-sm font-bold animate-pulse'
+                  : 'text-zinc-500 hover:text-zinc-300'
+              }`}
+            >
+              TOPO
             </button>
           </div>
         </div>
@@ -1042,6 +1130,173 @@ export function ConfiguratorPanel() {
           )}
         </div>
 
+        {/* Data Hall Room Planner & Containment Section */}
+        <div className="py-4 border-b border-zinc-800/60 flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <label className="text-[9px] uppercase tracking-wider text-zinc-500 font-bold flex items-center gap-1.5">
+              <span>[ 🏢 DATA_HALL_PLANNER ]</span>
+            </label>
+            <button
+              type="button"
+              onClick={toggleRoomView}
+              className={`text-[8px] px-2 py-0.5 rounded border font-bold uppercase cursor-pointer transition-all ${
+                isRoomViewEnabled
+                  ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300'
+                  : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {isRoomViewEnabled ? 'ENABLED' : 'DISABLED'}
+            </button>
+          </div>
+
+          {isRoomViewEnabled && (
+            <div className="flex flex-col gap-2.5 bg-zinc-950/40 p-2 rounded border border-zinc-850">
+              {/* Room Dimensions Inputs */}
+              <div className="grid grid-cols-3 gap-1.5 text-[8px]">
+                <div>
+                  <span className="text-zinc-500 block">WIDTH (m):</span>
+                  <input
+                    type="number"
+                    min={4}
+                    max={40}
+                    step={1}
+                    value={dataHallConfig.roomDimensions.widthMeters}
+                    onChange={(e) =>
+                      setRoomDimensions({ widthMeters: Math.max(4, parseFloat(e.target.value) || 12) })
+                    }
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-200 text-right"
+                  />
+                </div>
+                <div>
+                  <span className="text-zinc-500 block">DEPTH (m):</span>
+                  <input
+                    type="number"
+                    min={4}
+                    max={40}
+                    step={1}
+                    value={dataHallConfig.roomDimensions.depthMeters}
+                    onChange={(e) =>
+                      setRoomDimensions({ depthMeters: Math.max(4, parseFloat(e.target.value) || 10) })
+                    }
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-200 text-right"
+                  />
+                </div>
+                <div>
+                  <span className="text-zinc-500 block">PLENUM (m):</span>
+                  <input
+                    type="number"
+                    min={0.2}
+                    max={1.5}
+                    step={0.1}
+                    value={dataHallConfig.roomDimensions.raisedFloorHeightMeters}
+                    onChange={(e) =>
+                      setRoomDimensions({ raisedFloorHeightMeters: parseFloat(e.target.value) || 0.6 })
+                    }
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded px-1.5 py-0.5 text-zinc-200 text-right"
+                  />
+                </div>
+              </div>
+
+              {/* Cold-Aisle Containment Canopy Controls */}
+              <div className="p-2 bg-zinc-900/80 border border-zinc-800 rounded flex flex-col gap-1.5 text-[8px]">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-cyan-400 uppercase">COLD-AISLE CONTAINMENT</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setContainmentConfig({ enabled: !dataHallConfig.containment.enabled })
+                    }
+                    className={`px-1.5 py-0.5 rounded font-bold uppercase cursor-pointer ${
+                      dataHallConfig.containment.enabled
+                        ? 'bg-cyan-950 text-cyan-300 border border-cyan-800/60'
+                        : 'bg-zinc-800 text-zinc-500'
+                    }`}
+                  >
+                    {dataHallConfig.containment.enabled ? 'CANOPY ON' : 'CANOPY OFF'}
+                  </button>
+                </div>
+
+                {dataHallConfig.containment.enabled && (
+                  <div className="flex items-center justify-between mt-1 pt-1 border-t border-zinc-800/80">
+                    <span className="text-zinc-400">SLIDING END DOORS:</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setContainmentConfig({ doorOpen: !dataHallConfig.containment.doorOpen })
+                      }
+                      className={`px-2 py-0.5 rounded text-[8px] font-bold uppercase cursor-pointer ${
+                        dataHallConfig.containment.doorOpen
+                          ? 'bg-amber-950 text-amber-300 border border-amber-800/60'
+                          : 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
+                      }`}
+                    >
+                      {dataHallConfig.containment.doorOpen ? 'OPEN (UNSEALED)' : 'CLOSED (SEALED)'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* CRAC Cooling Redundancy Report */}
+              <div className="p-2 bg-zinc-900/80 border border-zinc-800 rounded flex flex-col gap-1 text-[8px]">
+                <div className="flex justify-between items-center border-b border-zinc-800 pb-1">
+                  <span className="font-bold text-zinc-300 uppercase">CRAC COOLING CAPACITY</span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded font-bold uppercase ${
+                      roomCoolingReport.status === 'healthy'
+                        ? 'bg-emerald-950 text-emerald-400'
+                        : roomCoolingReport.status === 'warning'
+                        ? 'bg-amber-950 text-amber-400'
+                        : 'bg-red-950 text-red-400 animate-pulse'
+                    }`}
+                  >
+                    {roomCoolingReport.coolingRedundancy} ({roomCoolingReport.status.toUpperCase()})
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-1 mt-0.5">
+                  <div>
+                    <span className="text-zinc-500 block text-[7px]">IT LOAD:</span>
+                    <span className="text-zinc-200 font-bold">{roomCoolingReport.totalItPowerKw} kW</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500 block text-[7px]">CRAC CAPACITY:</span>
+                    <span className="text-cyan-400 font-bold">{roomCoolingReport.totalCoolingCapacityKw} kW</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500 block text-[7px]">THERMAL RESERVE:</span>
+                    <span className="text-emerald-400 font-bold">{roomCoolingReport.coolingReserveKw} kW</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500 block text-[7px]">TOTAL CRAC UNITS:</span>
+                    <span className="text-zinc-200 font-bold">{dataHallConfig.cracUnits.length} UNITS</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    addCracUnit({
+                      name: `CRAC Unit ${dataHallConfig.cracUnits.length + 1}`,
+                      coolingKw: 60,
+                      airflowCFM: 9500,
+                      position: [
+                        (dataHallConfig.cracUnits.length % 2 === 0 ? -1 : 1) * 4.5,
+                        0,
+                        -3.5 + Math.floor(dataHallConfig.cracUnits.length / 2) * 2.0,
+                      ],
+                      orientation: 0,
+                      status: 'online',
+                    })
+                  }
+                  className="w-full mt-1 py-1 text-center bg-cyan-950/60 hover:bg-cyan-900 border border-cyan-800/60 text-cyan-300 rounded font-bold uppercase cursor-pointer transition-all active:scale-95"
+                >
+                  + ADD PERIMETER CRAC (60 kW)
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Add hardware catalog */}
         <div className="py-4 flex flex-col gap-4">
           {/* Custom 3D GLTF/GLB Asset Upload Zone */}
@@ -1212,7 +1467,7 @@ export function ConfiguratorPanel() {
         </div>
 
         {/* Inventory list */}
-        <div className="py-4 flex flex-col gap-1.5">
+        <div className="py-4 flex flex-col gap-1.5" role="list" aria-label="Installed hardware">
           {installedHardware.length === 0 ? (
             <div className="rounded border border-dashed border-zinc-800 px-3 py-10 text-center font-mono text-[10px] text-zinc-600 flex flex-col justify-center h-48 bg-zinc-950/20 select-none">
               <span>NO MOUNTED CHASSIS</span>
@@ -1226,6 +1481,8 @@ export function ConfiguratorPanel() {
               return (
                 <div
                   key={h.id}
+                  role="listitem"
+                  data-hardware-id={h.id}
                   onClick={() => selectHardware(isItemLocallySelected ? null : h.id)}
                   className={`group flex flex-col p-2.5 rounded border cursor-pointer transition-all relative tech-card-hover ${
                     isItemLocallySelected
@@ -1249,6 +1506,7 @@ export function ConfiguratorPanel() {
                         }}
                         className="text-zinc-650 hover:text-red-400 transition-colors p-0.5 rounded text-[8px] font-mono select-none focus:outline-none cursor-pointer"
                         title="Decommission Asset"
+                        aria-label={`Remove ${h.type} at ${getSlotRange(h)}`}
                       >
                         [X]
                       </button>
@@ -1344,6 +1602,178 @@ export function ConfiguratorPanel() {
                 onChange={(e) => updateHardwareProperty(selectedHardware.id, { depth: parseFloat(e.target.value) })}
                 className="w-full accent-cyan-500 h-1 bg-zinc-900 rounded appearance-none cursor-pointer border border-zinc-800/80"
               />
+            </div>
+
+            {/* L2/L3 Network Configuration Card */}
+            <div className="p-2.5 bg-zinc-900/60 border border-zinc-800 rounded flex flex-col gap-2 text-[9px]">
+              <div className="flex justify-between items-center border-b border-zinc-800/80 pb-1">
+                <span className="font-bold text-cyan-400 uppercase tracking-wider">🌐 L2/L3 NETWORK SPEC</span>
+                <span className="text-[8px] text-zinc-500">IEEE 802.1Q</span>
+              </div>
+
+              {/* Hostname & IP */}
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="text-zinc-500 block text-[8px]">HOSTNAME:</label>
+                  <input
+                    type="text"
+                    value={selectedHardware.networkConfig?.hostname || ''}
+                    placeholder={`${selectedHardware.type}-${selectedHardware.id.slice(0, 4)}`}
+                    onChange={(e) =>
+                      updateDeviceNetworkConfig(selectedHardware.id, {
+                        hostname: e.target.value,
+                      })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-[9px] text-zinc-200"
+                  />
+                </div>
+                <div>
+                  <label className="text-zinc-500 block text-[8px]">MGMT IP / CIDR:</label>
+                  <input
+                    type="text"
+                    value={selectedHardware.networkConfig?.managementIp || ''}
+                    placeholder="10.0.1.10"
+                    onChange={(e) =>
+                      updateDeviceNetworkConfig(selectedHardware.id, {
+                        managementIp: e.target.value,
+                      })
+                    }
+                    className="w-full bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-[9px] text-zinc-200"
+                  />
+                </div>
+              </div>
+
+              {/* Gateway */}
+              <div>
+                <label className="text-zinc-500 block text-[8px]">DEFAULT GATEWAY:</label>
+                <input
+                  type="text"
+                  value={selectedHardware.networkConfig?.gateway || ''}
+                  placeholder="10.0.1.1"
+                  onChange={(e) =>
+                    updateDeviceNetworkConfig(selectedHardware.id, {
+                      gateway: e.target.value,
+                    })
+                  }
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded px-1.5 py-0.5 text-[9px] text-zinc-200"
+                />
+              </div>
+
+              {/* Port Interfaces List */}
+              {selectedHardware.ports && selectedHardware.ports.length > 0 && (
+                <div className="flex flex-col gap-1.5 mt-1 border-t border-zinc-800/80 pt-1.5">
+                  <span className="text-[8px] text-zinc-500 font-bold uppercase">
+                    INTERFACES & VLAN TAGGING ({selectedHardware.ports.length} PORTS)
+                  </span>
+                  <div className="max-h-36 overflow-y-auto flex flex-col gap-1.5 custom-scrollbar pr-1">
+                    {selectedHardware.ports.map((port) => {
+                      const portCfg =
+                        selectedHardware.networkConfig?.portsConfig?.[port.id] ||
+                        port.networkConfig ||
+                        {};
+                      const isAdminUp = portCfg.adminStatus !== 'down';
+                      const vlanMode = portCfg.vlanConfig?.mode || 'access';
+                      const accessVlan = portCfg.vlanConfig?.accessVlan || 10;
+                      const speed = portCfg.speed || '10G-SFP+';
+
+                      return (
+                        <div
+                          key={port.id}
+                          className="p-1.5 bg-zinc-950/80 border border-zinc-850 rounded flex flex-col gap-1 text-[8px]"
+                        >
+                          <div className="flex justify-between items-center">
+                            <span className="font-bold text-zinc-300">{port.label || port.id}</span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updatePortNetworkConfig(selectedHardware.id, port.id, {
+                                  adminStatus: isAdminUp ? 'down' : 'up',
+                                })
+                              }
+                              className={`px-1.5 py-0.5 rounded font-bold uppercase cursor-pointer ${
+                                isAdminUp
+                                  ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/60'
+                                  : 'bg-red-950 text-red-400 border border-red-800/60'
+                              }`}
+                            >
+                              {isAdminUp ? 'UP' : 'DOWN'}
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-1 mt-0.5">
+                            <div>
+                              <span className="text-zinc-500 block text-[7px]">SPEED:</span>
+                              <select
+                                value={speed}
+                                onChange={(e) =>
+                                  updatePortNetworkConfig(selectedHardware.id, port.id, {
+                                    speed: e.target.value as LinkSpeed,
+                                  })
+                                }
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded px-1 py-0.5 text-[8px] text-zinc-300"
+                              >
+                                <option value="1G-BaseT">1G-BaseT</option>
+                                <option value="10G-SFP+">10G-SFP+</option>
+                                <option value="25G-SFP28">25G-SFP28</option>
+                                <option value="40G-QSFP+">40G-QSFP+</option>
+                                <option value="100G-QSFP28">100G-QSFP28</option>
+                              </select>
+                            </div>
+                            <div>
+                              <span className="text-zinc-500 block text-[7px]">VLAN MODE:</span>
+                              <select
+                                value={vlanMode}
+                                onChange={(e) =>
+                                  updatePortNetworkConfig(selectedHardware.id, port.id, {
+                                    vlanConfig: {
+                                      mode: e.target.value as VlanMode,
+                                      accessVlan,
+                                    },
+                                  })
+                                }
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded px-1 py-0.5 text-[8px] text-zinc-300"
+                              >
+                                <option value="access">Access</option>
+                                <option value="trunk">Trunk</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {vlanMode === 'access' ? (
+                            <div className="flex items-center justify-between mt-0.5">
+                              <span className="text-zinc-500 text-[7.5px]">ACCESS VLAN:</span>
+                              <input
+                                type="number"
+                                min={1}
+                                max={4094}
+                                value={accessVlan}
+                                onChange={(e) =>
+                                  updatePortNetworkConfig(selectedHardware.id, port.id, {
+                                    vlanConfig: {
+                                      mode: 'access',
+                                      accessVlan: parseInt(e.target.value, 10) || 1,
+                                    },
+                                  })
+                                }
+                                className="w-16 bg-zinc-900 border border-zinc-800 rounded px-1 text-[8px] text-zinc-200 text-right"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between mt-0.5">
+                              <span className="text-zinc-500 text-[7.5px]">TAGGED VLANS:</span>
+                              <input
+                                type="text"
+                                defaultValue="10,20,30"
+                                className="w-24 bg-zinc-900 border border-zinc-800 rounded px-1 text-[8px] text-zinc-200 text-right"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="mt-1">
@@ -1730,6 +2160,227 @@ export function ConfiguratorPanel() {
                     {log}
                   </div>
                 ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------------------------------------------------------- */}
+      {/* LIVE PROMETHEUS / TELEMETRY MODAL                                 */}
+      {/* ----------------------------------------------------------------- */}
+      {isTelemetryModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md pointer-events-auto p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-xl max-w-3xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/60">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-3 h-3 rounded-full ${
+                    isLiveTelemetryActive
+                      ? 'bg-rose-500 animate-ping shadow-[0_0_10px_#f43f5e]'
+                      : 'bg-zinc-600'
+                  }`}
+                />
+                <div>
+                  <h2 className="text-sm font-bold tracking-widest text-zinc-100 uppercase">
+                    📡 LIVE DATACENTER SENSOR & TELEMETRY STREAM
+                  </h2>
+                  <span className="text-[10px] text-zinc-400">
+                    REAL-TIME PROMETHEUS PROMQL POLLING & HARDWARE HEALTH MONITORING
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsTelemetryModalOpen(false)}
+                className="text-zinc-500 hover:text-zinc-200 text-lg font-mono px-2 py-1 rounded hover:bg-zinc-800 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 overflow-y-auto flex flex-col gap-4 text-[10px] custom-scrollbar">
+              {/* Telemetry Stream Control Header */}
+              <div className="p-3 bg-zinc-950/80 border border-zinc-800 rounded-lg flex justify-between items-center flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={toggleLiveTelemetry}
+                    className={`px-4 py-2 text-xs font-bold rounded flex items-center gap-2 cursor-pointer transition-all active:scale-95 ${
+                      isLiveTelemetryActive
+                        ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg'
+                    }`}
+                  >
+                    <span>{isLiveTelemetryActive ? '⏸ PAUSE STREAM' : '▶ START STREAM'}</span>
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-500">PROVIDER:</span>
+                    <select
+                      value={telemetryConfig.provider}
+                      onChange={(e) =>
+                        setTelemetryConfig({ provider: e.target.value as TelemetryProvider })
+                      }
+                      className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-[10px] text-zinc-200"
+                    >
+                      <option value="mock-stream">Built-in Physics Stream</option>
+                      <option value="prometheus">Prometheus REST API</option>
+                      <option value="zabbix">Zabbix JSON-RPC</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-zinc-500">POLL INTERVAL:</span>
+                    <select
+                      value={telemetryConfig.pollingIntervalMs}
+                      onChange={(e) =>
+                        setTelemetryConfig({ pollingIntervalMs: Number(e.target.value) })
+                      }
+                      className="bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-[10px] text-zinc-200"
+                    >
+                      <option value={1000}>1.0s (High-Frequency)</option>
+                      <option value={2000}>2.0s (Normal)</option>
+                      <option value={5000}>5.0s (Conservative)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {telemetryConfig.provider === 'prometheus' && (
+                  <div className="w-full flex items-center gap-2 mt-2 pt-2 border-t border-zinc-850">
+                    <span className="text-zinc-500 shrink-0">ENDPOINT:</span>
+                    <input
+                      type="text"
+                      value={telemetryConfig.endpointUrl}
+                      onChange={(e) => setTelemetryConfig({ endpointUrl: e.target.value })}
+                      placeholder="http://localhost:9090"
+                      className="flex-1 bg-zinc-900 border border-zinc-800 rounded px-2 py-1 text-[10px] text-zinc-200"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Aggregate Telemetry Summary Stats */}
+              <div className="grid grid-cols-4 gap-2">
+                <div className="p-2.5 bg-zinc-950/60 border border-zinc-855 rounded">
+                  <span className="text-zinc-500 block text-[9px]">TOTAL LIVE POWER</span>
+                  <span className="text-sm font-bold text-emerald-400 mt-0.5 block">
+                    {telemetrySummary.totalLivePowerWatts.toLocaleString()} W
+                  </span>
+                </div>
+                <div className="p-2.5 bg-zinc-950/60 border border-zinc-855 rounded">
+                  <span className="text-zinc-500 block text-[9px]">AVG / MAX CPU TEMP</span>
+                  <span className="text-sm font-bold text-cyan-400 mt-0.5 block">
+                    {telemetrySummary.avgCpuTempC}°C · {telemetrySummary.maxCpuTempC}°C
+                  </span>
+                </div>
+                <div className="p-2.5 bg-zinc-950/60 border border-zinc-855 rounded">
+                  <span className="text-zinc-500 block text-[9px]">HEALTH STATUS</span>
+                  <span className="text-sm font-bold text-zinc-200 mt-0.5 block">
+                    <span className="text-emerald-400">{telemetrySummary.healthyCount} OK</span> ·{' '}
+                    <span className="text-amber-400">{telemetrySummary.warningCount} WARN</span> ·{' '}
+                    <span className="text-red-400">{telemetrySummary.criticalCount} CRIT</span>
+                  </span>
+                </div>
+                <div className="p-2.5 bg-zinc-950/60 border border-zinc-855 rounded">
+                  <span className="text-zinc-500 block text-[9px]">TOTAL NET THROUGHPUT</span>
+                  <span className="text-sm font-bold text-purple-400 mt-0.5 block">
+                    {telemetrySummary.totalNetworkThroughputMbps.toLocaleString()} Mbps
+                  </span>
+                </div>
+              </div>
+
+              {/* Per-Chassis Live Metric Cards */}
+              <div className="flex flex-col gap-2">
+                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-wider">
+                  REAL-TIME CHASSIS SENSOR READINGS ({Object.keys(liveMetrics).length} ASSETS)
+                </span>
+                <div className="max-h-60 overflow-y-auto flex flex-col gap-1.5 custom-scrollbar pr-1">
+                  {Object.keys(liveMetrics).length === 0 ? (
+                    <div className="p-4 text-center text-zinc-500 bg-zinc-950/40 rounded border border-zinc-850">
+                      Telemetry stream is paused. Click [ START STREAM ] above to begin live sensor polling.
+                    </div>
+                  ) : (
+                    racks.flatMap((r) =>
+                      r.installedHardware.map((h) => {
+                        const m = liveMetrics[h.id];
+                        if (!m) return null;
+
+                        const isWarning = m.healthStatus === 'warning';
+                        const isCritical = m.healthStatus === 'critical';
+
+                        return (
+                          <div
+                            key={h.id}
+                            className={`p-2 rounded border flex items-center justify-between transition-all ${
+                              isCritical
+                                ? 'bg-red-950/30 border-red-800/80 shadow-[0_0_8px_rgba(239,68,68,0.2)]'
+                                : isWarning
+                                ? 'bg-amber-950/20 border-amber-800/60'
+                                : 'bg-zinc-950/60 border-zinc-850'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`w-2 h-2 rounded-full ${
+                                  isCritical
+                                    ? 'bg-red-500 animate-ping'
+                                    : isWarning
+                                    ? 'bg-amber-500'
+                                    : 'bg-emerald-500'
+                                }`}
+                              />
+                              <div>
+                                <span className="font-bold text-zinc-200 block">
+                                  {h.networkConfig?.hostname || h.modelName || `${h.type.toUpperCase()}-${h.id.slice(0, 4)}`}
+                                </span>
+                                <span className="text-[8px] text-zinc-500">
+                                  {r.name} · {h.rackUnits}U · {h.type}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Gauges */}
+                            <div className="flex items-center gap-4 text-right font-mono">
+                              <div>
+                                <span className="text-[7.5px] text-zinc-500 block">CPU TEMP</span>
+                                <span
+                                  className={`font-bold ${
+                                    isCritical
+                                      ? 'text-red-400'
+                                      : isWarning
+                                      ? 'text-amber-400'
+                                      : 'text-emerald-400'
+                                  }`}
+                                >
+                                  {m.cpuTempC}°C
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-[7.5px] text-zinc-500 block">FAN SPEED</span>
+                                <span className="text-cyan-400 font-bold">
+                                  {m.fanSpeedRpm.toLocaleString()} RPM
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-[7.5px] text-zinc-500 block">LIVE POWER</span>
+                                <span className="text-zinc-200 font-bold">{m.powerDrawWatts} W</span>
+                              </div>
+                              <div>
+                                <span className="text-[7.5px] text-zinc-500 block">NET I/O</span>
+                                <span className="text-purple-300 font-bold">
+                                  ↓{m.networkRxMbps} ↑{m.networkTxMbps}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }),
+                    )
+                  )}
+                </div>
               </div>
             </div>
           </div>

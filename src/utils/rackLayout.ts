@@ -141,3 +141,80 @@ export function checkDropValidity(
 
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// U-slot / rail helpers (EIA-310: U1 is the bottom slot).
+// Integer slot math on top of the metre-based scene coordinates so
+// placement, keyboard moves and save/load validation share one model.
+// ---------------------------------------------------------------------------
+
+/** Centre Y (rack-local metres) of a chassis whose bottom sits in `uStart`. */
+export function uStartToCenterY(uStart: number, rackUnits: number): number {
+  return (uStart - 1 + rackUnits / 2) * RACK_UNIT_HEIGHT;
+}
+
+/** Bottom U number (1-based) of a chassis centred at `y`, snapped to the nearest U. */
+export function centerYToUStart(y: number, rackUnits: number): number {
+  const bottom = y - (rackUnits * RACK_UNIT_HEIGHT) / 2;
+  return Math.round(bottom / RACK_UNIT_HEIGHT) + 1;
+}
+
+/** True if the chassis' bottom edge sits on a U boundary of the mounting rails. */
+export function isRailAligned(y: number, rackUnits: number): boolean {
+  if (!Number.isFinite(y) || !Number.isFinite(rackUnits)) return false;
+  const bottom = y - (rackUnits * RACK_UNIT_HEIGHT) / 2;
+  const nearest = Math.round(bottom / RACK_UNIT_HEIGHT) * RACK_UNIT_HEIGHT;
+  return Math.abs(bottom - nearest) <= COLLISION_EPSILON;
+}
+
+/** A chassis height must be a whole number of U between 1 and the rack capacity. */
+export function isValidRackUnitHeight(rackUnits: number, capacity: number): boolean {
+  return Number.isInteger(rackUnits) && rackUnits >= 1 && rackUnits <= capacity;
+}
+
+/** Map of occupied U number → device id (only Us inside 1..capacity). */
+export function getOccupiedUnits(
+  hardwareList: HardwareProps[],
+  capacity: number,
+): Map<number, string> {
+  const occupied = new Map<number, string>();
+  const sorted = [...hardwareList].sort((a, b) => a.position[1] - b.position[1]);
+  for (const h of sorted) {
+    const start = centerYToUStart(h.position[1], h.rackUnits);
+    for (let u = start; u < start + h.rackUnits; u++) {
+      if (u >= 1 && u <= capacity) occupied.set(u, h.id);
+    }
+  }
+  return new Map([...occupied.entries()].sort((a, b) => a[0] - b[0]));
+}
+
+/** Whether a chassis of `rackUnits` fits with its bottom at `uStart`. */
+export function canPlaceAt(
+  uStart: number,
+  rackUnits: number,
+  capacity: number,
+  hardwareList: HardwareProps[],
+  ignoreId: string = '',
+): boolean {
+  if (!Number.isInteger(uStart) || !isValidRackUnitHeight(rackUnits, capacity)) return false;
+  return checkDropValidity(
+    ignoreId,
+    uStartToCenterY(uStart, rackUnits),
+    rackUnits,
+    capacity,
+    hardwareList,
+  );
+}
+
+/** Lowest U where a chassis of `rackUnits` fits, or `null` if no gap is tall enough. */
+export function findFirstFreeSlot(
+  rackUnits: number,
+  capacity: number,
+  hardwareList: HardwareProps[],
+): number | null {
+  if (!isValidRackUnitHeight(rackUnits, capacity)) return null;
+  for (let u = 1; u + rackUnits - 1 <= capacity; u++) {
+    if (canPlaceAt(u, rackUnits, capacity, hardwareList)) return u;
+  }
+  return null;
+}

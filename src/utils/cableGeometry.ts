@@ -37,18 +37,20 @@ export function calculateSag(
   const dz = p2.z - p1.z;
   const dy = Math.abs(p2.y - p1.y);
   const horizontalDist = Math.sqrt(dx * dx + dz * dz);
+  const total3DDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
   // Base gravitational sag: longer horizontal runs sag quadratically
-  let sag = 0.04 * horizontalDist + 0.03 * Math.pow(horizontalDist, 1.5);
+  let sag = 0.045 * horizontalDist + 0.035 * Math.pow(horizontalDist, 1.5);
 
   // If there's a significant vertical distance, add natural catenary drape
-  if (dy > 0.1) {
-    sag += 0.02 * Math.min(dy, 0.5);
+  if (dy > 0.05) {
+    sag += 0.025 * Math.min(dy, 0.5);
   }
 
   // Minimum aesthetic drape
-  sag = Math.max(0.015, sag * sagMultiplier);
-  return sag;
+  sag = Math.max(0.02, sag * sagMultiplier);
+  // Cap sag to prevent dropping excessively into lower floor
+  return Math.min(sag, Math.max(0.04, total3DDist * 0.35));
 }
 
 /**
@@ -123,8 +125,8 @@ export function calculateCableCurve(
   const n1Z = p1.z >= 0 ? 1 : -1;
   const n2Z = p2.z >= 0 ? 1 : -1;
 
-  // Strain-relief boot exit points (straight out of socket before bending)
-  const bootLength = 0.035; // 35mm
+  // Rigid strain-relief boot exit points (minimum 60mm forward clearance before bending)
+  const bootLength = 0.060; // 60mm
   const boot1 = new THREE.Vector3(p1.x, p1.y, p1.z + n1Z * bootLength);
   const boot2 = new THREE.Vector3(p2.x, p2.y, p2.z + n2Z * bootLength);
 
@@ -138,11 +140,11 @@ export function calculateCableCurve(
   let midZ: number;
 
   if (n1Z > 0 && n2Z > 0) {
-    // Both front ports: push loop outward into front aisle
-    midZ = maxZ + 0.05 + sag * 0.4;
+    // Both front ports: push loop outward into front trough space (min 0.42m)
+    midZ = Math.max(maxZ + 0.065 + sag * 0.5, 0.42);
   } else if (n1Z < 0 && n2Z < 0) {
-    // Both rear ports: push loop outward into hot aisle
-    midZ = minZ - 0.05 - sag * 0.4;
+    // Both rear ports: push loop outward into hot aisle space
+    midZ = Math.min(minZ - 0.065 - sag * 0.5, -0.42);
   } else {
     // Front-to-back pass-through: route through chassis depth
     midZ = (p1.z + p2.z) / 2;
@@ -150,16 +152,16 @@ export function calculateCableCurve(
 
   const midPoint = new THREE.Vector3(midX, midY, midZ);
 
-  // Intermediate guide points for natural catenary drape
+  // Intermediate guide points for natural catenary drape outside the chassis bounding box
   const guide1 = new THREE.Vector3(
-    p1.x * 0.7 + midX * 0.3,
-    p1.y - sag * 0.3,
-    boot1.z * 0.6 + midZ * 0.4,
+    p1.x * 0.6 + midX * 0.4,
+    p1.y - sag * 0.25,
+    n1Z > 0 ? Math.max(boot1.z, midZ * 0.85) : Math.min(boot1.z, midZ * 0.85),
   );
   const guide2 = new THREE.Vector3(
-    p2.x * 0.7 + midX * 0.3,
-    p2.y - sag * 0.3,
-    boot2.z * 0.6 + midZ * 0.4,
+    p2.x * 0.6 + midX * 0.4,
+    p2.y - sag * 0.25,
+    n2Z > 0 ? Math.max(boot2.z, midZ * 0.85) : Math.min(boot2.z, midZ * 0.85),
   );
 
   const controlPoints = [

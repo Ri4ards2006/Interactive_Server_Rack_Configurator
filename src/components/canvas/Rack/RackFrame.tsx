@@ -81,6 +81,8 @@ export function RackFrame(props: RackFrameProps = {}) {
       targetRot,
       1 - Math.exp(-8 * delta)
     );
+    // Keep animating in frameloop="demand" until the door settles.
+    if (Math.abs(doorGroupRef.current.rotation.y - targetRot) > 1e-3) state.invalidate();
   });
 
   const postX = MOUNT_WIDTH / 2;

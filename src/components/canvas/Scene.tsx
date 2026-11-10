@@ -25,12 +25,17 @@ import {
 import { useShallow } from 'zustand/react/shallow';
 
 import { RackFrame } from './Rack/RackFrame';
+import { usePrefersReducedMotion } from '../../hooks/usePrefersReducedMotion';
 import { RackScrews } from './Rack/RackScrews';
 import { RackLabels } from './Rack/RackLabels';
 import { HardwareMapper } from './HardwareMapper';
 import { CableMapper } from './Hardware/PatchCable';
 import { DropIndicator } from './interactions/DropIndicator';
 import { ThermalHeatmapOverlay } from './Thermal/ThermalHeatmapOverlay';
+import { NetworkTopologyView } from './Topology/NetworkTopologyView';
+import { DataHallFloor } from './Room/DataHallFloor';
+import { AisleContainmentMesh } from './Room/AisleContainmentMesh';
+import { CracUnitMesh } from './Room/CracUnitMesh';
 import { exportSceneToGLTF } from '../../utils/exporters/gltfExporter';
 import {
   useConfiguratorStore,
@@ -53,6 +58,7 @@ interface SceneContentsProps {
 export function SceneContents({ orbitRef }: SceneContentsProps) {
   const isBlueprint = useIsBlueprint();
   const viewMode = useConfiguratorStore((s) => s.viewMode);
+  const isRoomViewEnabled = useConfiguratorStore((s) => s.isRoomViewEnabled);
   const racks = useConfiguratorStore(useShallow((s) => s.racks));
   const activeRackId = useConfiguratorStore((s) => s.activeRackId);
   const { camera, scene } = useThree();
@@ -166,8 +172,14 @@ export function SceneContents({ orbitRef }: SceneContentsProps) {
       {/* Ghost preview during drag */}
       <DropIndicator />
 
+      {/* Cold/Hot Aisle Containment & CRAC Cooling Towers */}
+      <AisleContainmentMesh />
+      <CracUnitMesh />
+
       {/* -- Floor chrome ------------------------------------------------ */}
-      {!isBlueprint && (
+      {!isBlueprint && isRoomViewEnabled && <DataHallFloor />}
+
+      {!isBlueprint && !isRoomViewEnabled && (
         <>
           <ContactShadows
             position={[0, -0.001, 0]}
@@ -195,22 +207,29 @@ export function SceneContents({ orbitRef }: SceneContentsProps) {
 
 export function Scene() {
   const orbitRef = useRef<OrbitControlsHandle | null>(null);
+  const viewMode = useConfiguratorStore((s) => s.viewMode);
+  // Reduced motion: render on demand only (no idle LED blinking / continuous loop).
+  const reducedMotion = usePrefersReducedMotion();
 
   return (
-    <Canvas
-      shadows
-      camera={{ position: [1.5, 1.2, 1.5], fov: 50 }}
-      gl={{ antialias: true }}
-    >
-      <SceneContents orbitRef={orbitRef} />
-      <OrbitControls
-        ref={orbitRef as any}
-        makeDefault
-        minDistance={0.5}
-        maxDistance={10}
-        target={[0, 0.8, 0]}
-        maxPolarAngle={Math.PI / 2 + 0.05}
-      />
-    </Canvas>
+    <div className="w-full h-full relative">
+      <Canvas
+        frameloop={reducedMotion ? 'demand' : 'always'}
+        shadows
+        camera={{ position: [1.5, 1.2, 1.5], fov: 50 }}
+        gl={{ antialias: true }}
+      >
+        <SceneContents orbitRef={orbitRef} />
+        <OrbitControls
+          ref={orbitRef as any}
+          makeDefault
+          minDistance={0.5}
+          maxDistance={10}
+          target={[0, 0.8, 0]}
+          maxPolarAngle={Math.PI / 2 + 0.05}
+        />
+      </Canvas>
+      {viewMode === 'topology' && <NetworkTopologyView />}
+    </div>
   );
 }
